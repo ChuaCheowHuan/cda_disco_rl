@@ -45,9 +45,11 @@ which removes that dependence from the critic.
 | Policy prediction | `policy_prediction` | Auxiliary head predicting the next step's policy | Experimental |
 
 In a 3-seed, 30-iteration comparison, none separated from PPO on return. Target policy had the
-best mean, and every recommended component kept the critic at least as good as PPO's.
+best mean, and every recommended component kept the critic at least as good as PPO's
+([docs/findings.md](docs/findings.md)).
 
-Every component is off by default, and `cda_discorl/config.py` lists every key with its default.
+Every component is off by default. [docs/configuration.md](docs/configuration.md) lists every key
+with its default and rules, plus ready-made settings blocks.
 `modules` picks which trainable modules get the components; the others stay plain PPO, so one
 league run compares the two. `target_policy`, `adv_ema` and `value_norm` keep per-Learner state
 and refuse `num_learners > 1`. A switch for a component that is not built is refused rather than
@@ -129,6 +131,11 @@ It adds the next observation to the Learner's train batch when the run does not 
 (JEPA runs do). It needs a stateless encoder, so it refuses `encoder_type: lstm`. The head lives
 only on the Learner's copy of a module; env runners do not build it.
 
+## Documentation
+
+[docs/](docs/README.md) covers the architecture, every setting, the comparison against PPO
+and development. The [changelog](CHANGELOG.md) lists what changed in each version.
+
 ## Licence
 
 Apache-2.0, the licence of `disco_rl`; see `LICENSE` and `NOTICE`.
@@ -141,4 +148,5 @@ python -m pytest -q
 ```
 
 They run against the installed gym-CDA and include real training iterations. CI is in
-`ci/cda_discorl.yml`; move it to `.github/workflows/` to enable it.
+`ci/cda_discorl.yml`; move it to `.github/workflows/` to enable it. See
+[docs/development.md](docs/development.md).
