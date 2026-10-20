@@ -220,7 +220,8 @@ class TestInARealRun:
         try:
             got = restored.learner_group._learner.module["policy_0"].unwrapped()
             want = self.learner.module["policy_0"].unwrapped()
-            # The module state travels as float32, so allow its rounding.
-            assert got.value_norm_stats() == pytest.approx(want.value_norm_stats(), rel=1e-5)
+            # Exact: the moments are restored as float64, not RLlib's float32.
+            assert got._vn_moment2.dtype == torch.float64
+            assert got.value_norm_stats() == pytest.approx(want.value_norm_stats(), rel=1e-12)
         finally:
             restored.stop()
