@@ -25,6 +25,7 @@ Numbers are the final iteration's mean ± standard deviation across seeds. "Retu
 | Advantage EMA | 0.192 ± 0.218 | 0.886 ± 0.007 | 0.104 ± 0.009 |
 | Env variety | 0.226 ± 0.162 | 0.892 ± 0.048 | 0.125 ± 0.044 |
 | Policy prediction | 0.029 ± 0.119 | 0.863 ± 0.124 | 0.132 ± 0.015 |
+| Value normalisation | 0.117 ± 0.088 | 0.936 ± 0.032 | 0.126 ± 0.021 |
 | Categorical value (removed) | -0.028 ± 0.038 | 0.248 ± 0.150 | 0.086 ± 0.031 |
 | Disco103 (removed) | -0.006 ± 0.300 | – | 0.080 ± 0.024 |
 
@@ -40,7 +41,11 @@ What it does show:
   package, marked experimental.
 - **Env variety** draws fees per episode, so its returns come from a different market from the
   other arms' and are not directly comparable.
-- **Value normalisation** was added after this comparison and has not been measured yet.
+- **Value normalisation**, run later on the same settings, gave the best critic of any arm
+  (explained variance 0.94 against PPO's 0.82, and steadier across seeds). Its mean return is
+  lower than PPO's, but within the spread between seeds. At the end of seed 0 its running
+  estimate of the value targets was a mean of 0.11 and a standard deviation of 0.07. So the
+  targets grow as the agents learn, from the 0.004 standard deviation measured early in a run.
 
 ## 3. A longer run: target policy against PPO
 

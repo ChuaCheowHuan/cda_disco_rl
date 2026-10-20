@@ -73,7 +73,8 @@ module.
 {"discorl": {"modules": ["policy_0"], "target_policy": true, "adv_ema": true}}
 ```
 
-**Value normalisation alone.** This one is new and is still being measured:
+**Value normalisation alone.** It gave the best critic in testing; its effect on return is not
+yet clear:
 
 ```json
 {"discorl": {"modules": ["policy_0"], "value_norm": true}}

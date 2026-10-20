@@ -40,7 +40,7 @@ which removes that dependence from the critic.
 |---|---|---|---|
 | Target policy | `target_policy` | KL from the policy to an EMA copy of itself | Recommended; ahead of PPO on average, not significantly |
 | Advantage EMA | `adv_ema` | Normalises advantages by a lifetime EMA of their scale | Recommended |
-| Value normalisation | `value_norm` | Critic learns returns on a unit scale | New, being measured |
+| Value normalisation | `value_norm` | Critic learns returns on a unit scale | Best critic in testing; return within noise of PPO |
 | Env variety | `env_variety` | Redraws some market rules at the start of every episode | Recommended for generalisation |
 | Policy prediction | `policy_prediction` | Auxiliary head predicting the next step's policy | Experimental |
 
