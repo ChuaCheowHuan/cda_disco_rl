@@ -38,15 +38,16 @@ which removes that dependence from the critic.
 
 | Component | Switch | What it does | Status |
 |---|---|---|---|
-| Target policy | `target_policy` | KL from the policy to an EMA copy of itself | Recommended, pending a longer run |
+| Target policy | `target_policy` | KL from the policy to an EMA copy of itself | Recommended; ahead of PPO on average, not significantly |
 | Advantage EMA | `adv_ema` | Normalises advantages by a lifetime EMA of their scale | Recommended |
 | Value normalisation | `value_norm` | Critic learns returns on a unit scale | New, being measured |
 | Env variety | `env_variety` | Redraws some market rules at the start of every episode | Recommended for generalisation |
 | Policy prediction | `policy_prediction` | Auxiliary head predicting the next step's policy | Experimental |
 
 In a 3-seed, 30-iteration comparison, none separated from PPO on return. Target policy had the
-best mean, and every recommended component kept the critic at least as good as PPO's
-([docs/findings.md](docs/findings.md)).
+best mean, and every recommended component kept the critic at least as good as PPO's. Over 100
+iterations and 5 seeds, target policy averaged about twice PPO's return, but within the spread
+between seeds ([docs/findings.md](docs/findings.md)).
 
 Every component is off by default. [docs/configuration.md](docs/configuration.md) lists every key
 with its default and rules, plus ready-made settings blocks.

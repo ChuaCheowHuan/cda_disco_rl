@@ -42,10 +42,26 @@ What it does show:
   other arms' and are not directly comparable.
 - **Value normalisation** was added after this comparison and has not been measured yet.
 
-A longer run of PPO against target policy (100 iterations, 5 seeds) is in progress. Its result
-will be added here.
+## 3. A longer run: target policy against PPO
 
-## 3. What was removed, and why
+Target policy, the best arm above, was rerun against PPO for 100 iterations and five seeds (0 to
+4), with the other settings unchanged. Return here is averaged over each seed's last 20
+iterations, which is steadier than the final iteration alone.
+
+| Arm | Return, last 20 iterations | Per seed (0 to 4) | Critic explained variance |
+|---|---|---|---|
+| Plain PPO | 0.081 ± 0.060 | 0.030, 0.014, 0.103, 0.097, 0.161 | 0.90 |
+| Target policy | 0.178 ± 0.223 | 0.236, 0.046, 0.047, 0.545, 0.014 | 0.88 |
+
+Target policy's mean is about twice PPO's, but the difference is not significant. Paired by
+seed, it is ahead on three of five seeds (mean difference 0.097, t = 0.92 with 4 degrees of
+freedom), and most of its lead comes from seed 3. It also varies more between seeds. Both
+critics are equally good.
+
+So target policy stays recommended because it does no harm and may help. Showing that it helps
+would take more seeds or a longer budget.
+
+## 4. What was removed, and why
 
 ### The categorical critic
 
@@ -81,7 +97,7 @@ this comparison it learned no better than PPO and cost far more. Each module had
 against 0.26M, each run took about 4× as long, and each held about 4 GB of memory. It was
 meta-trained on agent lifetimes in the millions of steps, against about 120 optimiser steps here.
 
-## 4. Reproducing a run
+## 5. Reproducing a run
 
 With gym-CDA and this package installed, one arm and one seed is:
 
@@ -93,7 +109,7 @@ OMP_NUM_THREADS=1 python -m gym_continuousDoubleAuction.train.compare \
   --set 'extension_settings={"discorl":{"modules":["policy_0","policy_1"],"target_policy":true}}'
 ```
 
-Leave out both `--set` lines for the plain PPO arm. A plain PPO run took about 7 minutes on a CPU.
+Leave out both `--set` lines for the plain PPO arm, and pass `--iters 100` for the longer run. A plain PPO run took about 7 minutes on a CPU.
 With `OMP_NUM_THREADS=1`, three run side by side without slowing each other.
 `gym_continuousDoubleAuction.train.compare.aggregate` and `render` turn the
 `compare_results.json` files into the table above.
