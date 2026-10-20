@@ -55,7 +55,7 @@ it, rather than `compute_loss_for_module`, keeps the MoE and JEPA terms.
 |---|---|---|---|---|
 | `target_policy` | `build` deep-copies each selected module; `_policy_value_loss` adds `target_kl_cost * KL(pi_target ‖ pi)`; `apply_gradients` moves the copy `1 - target_coeff` toward the online weights | – | – | Target weights, in the Learner state under `discorl_target_policy` |
 | `adv_ema` | `build` inserts the connector | – | `EmaAdvantages`, after `GeneralAdvantageEstimation` | EMA moments, in the Learner state under `discorl_adv_ema` |
-| `value_norm` | `build` inserts the connector; `_policy_value_loss` swaps in normalised value targets and reads the raw head | `setup` adds float64 moment buffers; `compute_values` maps the head back to reward units | `ValueNormMoments`, after `GeneralAdvantageEstimation` | Moment buffers, with the module weights |
+| `value_norm` | `build` inserts the connector; `_policy_value_loss` swaps in normalised value targets and reads the raw head | `setup` adds float64 moment buffers; `compute_values` maps the head back to reward units | `ValueNormMoments`, after `GeneralAdvantageEstimation` | Moment buffers, with the module weights; `set_state` restores them as float64, since RLlib's cast to float32 would blur the std |
 | `env_variety` | – | – | – | None; a seeded `reset` repeats its draw |
 | `policy_prediction` | `build` adds next observations to the batch if the run lacks them; `_policy_value_loss` adds the prediction KL | `setup` adds the `aux_pi` head (Learner copy only); `_forward_train` fills it | `AddNextObservationsFromEpisodesToTrainBatch`, when missing | The head's weights, with the module |
 
