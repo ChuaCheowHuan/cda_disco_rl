@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
+import numpy as np
 import torch
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.learner import GeneralAdvantageEstimation
@@ -78,6 +79,19 @@ class ValueNormModule:
         self._vn_moment1.mul_(d).add_((1.0 - d) * t.mean())
         self._vn_moment2.mul_(d).add_((1.0 - d) * (t**2).mean())
         self._vn_decay_product.mul_(d)
+
+    def set_state(self, state) -> None:
+        # RLlib's set_state casts float64 arrays to float32, and the std is a
+        # difference of two moments, so that rounding would grow ~100-fold.
+        # Restore the moments at full precision after the rest of the state.
+        super().set_state(state)
+        if not self._vn_on:
+            return
+        for name in ("moment1", "moment2", "decay_product"):
+            key = f"_vn_{name}"
+            if key in state:
+                value = torch.as_tensor(np.asarray(state[key]), dtype=torch.float64)
+                getattr(self, key).copy_(value)
 
     def compute_values(self, batch, embeddings=None):
         values = super().compute_values(batch, embeddings=embeddings)
