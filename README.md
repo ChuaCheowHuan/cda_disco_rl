@@ -3,8 +3,9 @@
 Learning mechanisms from *Discovering state-of-the-art reinforcement learning algorithms*
 (Oh et al., 2025) for the PPO learner in
 [gym-continuousDoubleAuction](https://github.com/ChuaCheowHuan/gym-continuousDoubleAuction)
-(gym-CDA), packaged as a training extension. It lives beside the upstream `disco_rl` package,
-which it does not modify.
+(gym-CDA), packaged as a training extension. It is a PyTorch port of those mechanisms and does
+not depend on DeepMind's [`disco_rl`](https://github.com/google-deepmind/disco_rl), which is
+JAX; the docstrings cite the `disco_rl` file each one comes from.
 
 Installing it changes no run. A run uses it only when its train config lists it:
 
@@ -22,7 +23,7 @@ gym-CDA is not on PyPI, so install it first, then this package:
 
 ```bash
 pip install "gym_continuousDoubleAuction @ git+https://github.com/ChuaCheowHuan/gym-continuousDoubleAuction"
-pip install "git+https://github.com/ChuaCheowHuan/disco_rl#subdirectory=cda_discorl"
+pip install "git+https://github.com/ChuaCheowHuan/cda_disco_rl"
 ```
 
 ## What is in it, and why
@@ -128,10 +129,15 @@ It adds the next observation to the Learner's train batch when the run does not 
 (JEPA runs do). It needs a stateless encoder, so it refuses `encoder_type: lstm`. The head lives
 only on the Learner's copy of a module; env runners do not build it.
 
+## Licence
+
+Apache-2.0, the licence of `disco_rl`; see `LICENSE` and `NOTICE`.
+
 ## Tests
 
 ```bash
-cd cda_discorl && python -m pytest -q
+pip install -e '.[test]'
+python -m pytest -q
 ```
 
 They run against the installed gym-CDA and include real training iterations. CI is in

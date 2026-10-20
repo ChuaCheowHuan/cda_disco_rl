@@ -4,7 +4,7 @@ RLlib's GAE connector standardises each batch's advantages by that batch's own
 mean and standard deviation. DiscoRL instead keeps an exponential moving
 average of the advantage's first and second moments over the agent's whole
 lifetime, debiased as Adam debiases its moments, and normalises with those
-(`disco_rl/utils.py`, `MovingAverage`). A batch of unusually large or small
+(google-deepmind/disco_rl, `disco_rl/utils.py`, `MovingAverage`). A batch of unusually large or small
 advantages then keeps its scale relative to the past, instead of being
 stretched to unit variance.
 

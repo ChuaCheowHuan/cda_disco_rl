@@ -3,7 +3,7 @@
 DiscoRL's agent has an `aux_pi` output: for every action it could take now, a
 prediction of the policy it will have at the next step. It is trained toward
 the actual next-step logits (stop-gradient), with terminal steps masked out
-(`disco_rl/update_rules/disco.py`). The head is never acted on; it shapes the
+(google-deepmind/disco_rl, `disco_rl/update_rules/disco.py`). The head is never acted on; it shapes the
 shared representation toward what the agent's own action does to its next
 decision.
 

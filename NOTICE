@@ -1,0 +1,9 @@
+cda-discorl
+Copyright 2026 the cda-discorl authors
+
+This package ports learning mechanisms described in "Discovering
+state-of-the-art reinforcement learning algorithms" (Oh et al., Nature, 2025)
+and implemented in DeepMind's disco_rl (https://github.com/google-deepmind/disco_rl),
+Copyright 2025 DeepMind Technologies Limited, licensed under the Apache
+License, Version 2.0. No disco_rl source file is included; the ported
+mechanisms are reimplemented in PyTorch.

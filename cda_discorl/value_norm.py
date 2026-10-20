@@ -5,7 +5,7 @@ This market's value targets are tiny. Their standard deviation is about 0.004 in
 whose loss assumes a fixed scale, as DiscoRL's categorical critic and Disco103
 do, is badly placed to see a signal that small; neither learned here. DiscoRL
 itself never relies on raw scale; it normalises TD errors and advantages by
-running moments (`disco_rl/value_fns`).
+running moments (google-deepmind/disco_rl, `disco_rl/value_fns`).
 
 With `value_norm` on, the value head predicts the *normalised* return,
 `(G - mean) / std`, where mean and std come from a debiased EMA of the value
