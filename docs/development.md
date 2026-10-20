@@ -39,9 +39,9 @@ Style: `ruff format .` (line length 100) and `pyflakes cda_discorl tests`.
 
 ## 3. CI
 
-The workflow is [`ci/cda_discorl.yml`](../ci/cda_discorl.yml). It installs CPU PyTorch, gym-CDA
-at `GYM_CDA_REF`, and this package, and then runs the tests. To enable it, copy it to
-`.github/workflows/`. The session that wrote it could not push workflow files.
+The workflow is [`.github/workflows/cda_discorl.yml`](../.github/workflows/cda_discorl.yml). It
+runs on pushes to `main` and on pull requests: it installs CPU PyTorch, gym-CDA at
+`GYM_CDA_REF` and this package, then runs the tests.
 
 `GYM_CDA_REF` defaults to gym-CDA's `claude/discorl-fresh` branch. Point it at `master` or a
 release tag once the extension point has merged. A manual run can override it with the

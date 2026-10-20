@@ -148,6 +148,6 @@ pip install -e '.[test]'
 python -m pytest -q
 ```
 
-They run against the installed gym-CDA and include real training iterations. CI is in
-`ci/cda_discorl.yml`; move it to `.github/workflows/` to enable it. See
+They run against the installed gym-CDA and include real training iterations. CI runs them on every push
+and pull request (`.github/workflows/cda_discorl.yml`). See
 [docs/development.md](docs/development.md).
