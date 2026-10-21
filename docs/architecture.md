@@ -68,7 +68,10 @@ normalises with that.
 
 ### Value normalisation
 
-`ValueNormMoments` updates the module's moments from the masked `VALUE_TARGETS` right after GAE.
+`ValueNormMoments` updates the module's moments from the masked `VALUE_TARGETS` right after GAE,
+or right after `EmaAdvantages` when `adv_ema` is on too. That order matters: `EmaAdvantages`
+recomputes `V(s)` through `compute_values`, and it must use the stats GAE bootstrapped with, not
+ones already updated from this batch.
 In the loss, `ValueNormLearner` replaces the targets with `(T - mean) / std` and sets the
 module's `_vn_raw` flag around the `super()` call, so PPO's critic loss compares normalised
 targets with the head's normalised output. Everywhere else, `compute_values` returns

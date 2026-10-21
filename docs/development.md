@@ -27,7 +27,7 @@ The suite takes about a minute on a CPU. Its tests are:
 | `test_extension.py` | Registration through the real entry point, the defaults, and every `validate` rule |
 | `test_target_policy.py` | The KL term, the EMA update after each step, and the Learner-state round trip |
 | `test_adv_ema.py` | The debiased moments, the connector's placement after GAE, and the state round trip |
-| `test_value_norm.py` | The module buffers, de-normalised `compute_values`, the loss on normalised targets, and a checkpoint round trip |
+| `test_value_norm.py` | The module buffers, de-normalised `compute_values`, the loss on normalised targets, a checkpoint round trip, and its order after `EmaAdvantages` when `adv_ema` is on too |
 | `test_env_variety.py` | The per-episode draw, seeding, and the fee rules |
 | `test_policy_prediction.py` | The head's shape, the per-component KL, terminal masking, and the next-observation connector |
 | `test_real_run.py` | A real gym-CDA `Algorithm` training with every component on, with the extension recorded in its checkpoint |
