@@ -33,7 +33,7 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 
 from gym_continuousDoubleAuction.train.extensions import settings_for
 
-from cda_discorl.adv_ema import EPS, ROOT_EPS
+from cda_discorl.adv_ema import EPS, ROOT_EPS, EmaAdvantages
 
 NAME = "discorl"
 
@@ -102,7 +102,8 @@ class ValueNormModule:
 
 
 class ValueNormMoments(ConnectorV2):
-    """After GAE, folds each selected module's value targets into its moments."""
+    """After GAE (and after the advantage EMA when it is on), folds each selected
+    module's value targets into its moments."""
 
     def __init__(self, module_ids: Iterable[str], **kwargs):
         super().__init__(**kwargs)
@@ -132,9 +133,10 @@ class ValueNormLearner:
         s = settings_for(self.config.learner_config_dict, NAME)
         if not s.get("value_norm"):
             return
-        self._learner_connector.insert_after(
-            GeneralAdvantageEstimation, ValueNormMoments(s["modules"])
-        )
+        # After the advantage EMA when it is on: it recomputes V(s) through
+        # `compute_values`, which must still use the stats GAE bootstrapped with.
+        anchor = EmaAdvantages if s.get("adv_ema") else GeneralAdvantageEstimation
+        self._learner_connector.insert_after(anchor, ValueNormMoments(s["modules"]))
 
     def _policy_value_loss(self, *, module_id, config, batch, fwd_out):
         module = self.module[module_id].unwrapped()
