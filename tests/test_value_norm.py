@@ -225,3 +225,56 @@ class TestInARealRun:
             assert got.value_norm_stats() == pytest.approx(want.value_norm_stats(), rel=1e-12)
         finally:
             restored.stop()
+
+
+class TestWithAdvEma:
+    """With adv_ema on too, the advantage EMA recomputes V(s) with the stats GAE used.
+
+    The value-norm moments must move only after `EmaAdvantages` has run;
+    otherwise its baseline is V(s) under the new stats while the value targets
+    were bootstrapped under the old ones.
+    """
+
+    @classmethod
+    def setup_class(cls):
+        extensions.discover.cache_clear()
+        ray.init(ignore_reinit_error=True, include_dashboard=False, log_to_driver=False, num_cpus=2)
+        cls.log_dir = tempfile.mkdtemp()
+        settings = {"value_norm": True, "value_norm_decay": 0.9, "adv_ema": True}
+        cfg = {**TEST_CFG, "extension_settings": {"discorl": settings}}
+        cls.cfg = TrainConfig(**cfg, log_base_dir=cls.log_dir)
+        ppo_config, _cb = build_config(cls.cfg)
+        cls.algo = ppo_config.build_algo()
+        cls.learner = cls.algo.learner_group._learner
+        cls.module = cls.learner.module["policy_0"].unwrapped()
+
+        cls.seen = []
+        original = adv_ema.EmaAdvantages.__call__
+
+        def spy(self, **kwargs):
+            cls.seen.append(cls.module.value_norm_stats())
+            return original(self, **kwargs)
+
+        cls.before = []
+        adv_ema.EmaAdvantages.__call__ = spy
+        try:
+            for _ in range(2):
+                cls.before.append(cls.module.value_norm_stats())
+                cls.algo.train()
+        finally:
+            adv_ema.EmaAdvantages.__call__ = original
+
+    @classmethod
+    def teardown_class(cls):
+        cls.algo.stop()
+        ray.shutdown()
+        shutil.rmtree(cls.log_dir, ignore_errors=True)
+
+    def test_the_moments_update_after_the_advantage_ema(self):
+        names = [type(p).__name__ for p in self.learner._learner_connector.connectors]
+        gae = names.index("GeneralAdvantageEstimation")
+        assert names[gae + 1 : gae + 3] == ["EmaAdvantages", "ValueNormMoments"]
+
+    def test_the_advantage_ema_sees_the_stats_gae_used(self):
+        assert self.seen == self.before
+        assert self.before[1] != (0.0, 1.0), "the moments moved between the iterations"
