@@ -18,7 +18,7 @@ on:
 
 env:
   # The gym-CDA ref carrying the extension point this package needs.
-  GYM_CDA_REF: ${{ inputs.gym_cda_ref || 'claude/discorl-fresh' }}
+  GYM_CDA_REF: ${{ inputs.gym_cda_ref || 'master' }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
