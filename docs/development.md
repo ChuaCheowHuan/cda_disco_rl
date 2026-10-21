@@ -10,9 +10,8 @@ pip install "gym_continuousDoubleAuction @ git+https://github.com/ChuaCheowHuan/
 pip install -e '.[test]'
 ```
 
-`<ref>` must be a gym-CDA commit that has the extension point, `train/extensions.py`. Until
-ChuaCheowHuan/gym-continuousDoubleAuction#314 merges, that is its branch,
-`claude/discorl-fresh`. After it merges, use `master` or the first release tag that carries it.
+`<ref>` must be a gym-CDA commit that has the extension point, `train/extensions.py`: `master`,
+or the first release tag that carries it.
 
 ## 2. Tests
 
@@ -43,8 +42,8 @@ The workflow is [`.github/workflows/cda_discorl.yml`](../.github/workflows/cda_d
 runs on pushes to `main` and on pull requests: it installs CPU PyTorch, gym-CDA at
 `GYM_CDA_REF` and this package, then runs the tests.
 
-`GYM_CDA_REF` defaults to gym-CDA's `claude/discorl-fresh` branch. Point it at `master` or a
-release tag once the extension point has merged. A manual run can override it with the
+`GYM_CDA_REF` defaults to gym-CDA's `master`, which has the extension point since
+ChuaCheowHuan/gym-continuousDoubleAuction#314 merged. A manual run can test another ref with the
 `gym_cda_ref` input.
 
 ## 4. Compatibility with gym-CDA
