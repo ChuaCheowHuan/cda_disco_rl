@@ -153,6 +153,18 @@ class TestInARealRun:
                 assert np.isfinite(float(metrics[f"discorl_d103_{name}_{term}_loss"])), (name, term)
         assert np.isfinite(float(metrics["total_loss"]))
 
+    def test_the_head_is_declared_on_the_trunk_it_reads(self):
+        # Continual Backprop resets the input weights of the heads `trunk_outputs`
+        # reports, so a head it did not see would read a replaced unit with the
+        # old unit's weights (cda_disco_rl#5).
+        from gym_continuousDoubleAuction.train.model.layout import trunk_outputs
+
+        module = self.learner.module["policy_0"].unwrapped()
+        reads_pi = [t for t in trunk_outputs(module) if module.pi in t.heads]
+        assert reads_pi and all(t.extra_heads == [module.disco_heads] for t in reads_pi)
+        others = [t for t in trunk_outputs(module) if module.pi not in t.heads]
+        assert all(t.extra_heads == [] for t in others)
+
     def test_the_critic_reports_its_explained_variance(self):
         # train.compare reads it; without it a Disco103 row has no critic column.
         assert np.isfinite(float(self.result["learners"]["policy_0"]["vf_explained_var"]))
