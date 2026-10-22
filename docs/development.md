@@ -10,8 +10,9 @@ pip install "gym_continuousDoubleAuction @ git+https://github.com/ChuaCheowHuan/
 pip install -e '.[test]'
 ```
 
-`<ref>` must be a gym-CDA commit that has the extension point, `train/extensions.py`: `master`,
-or the first release tag that carries it.
+`<ref>` must be a gym-CDA commit at version 2.1.0 or later (§4), such as `master`; leave out
+`@<ref>` to take `master`. Clone this repository with `--recurse-submodules` (§4) before the
+editable install.
 
 ## 2. Tests
 
@@ -30,7 +31,7 @@ The suite takes about two minutes on a CPU. Its tests are:
 | `test_policy_prediction.py` | The head's shape, the per-component KL, terminal masking, and the next-observation connector |
 | `test_disco103.py` | The settings and weights load from the installed `disco_rl`, the bridge's targets and carried state, the torch value loss against `disco_rl`'s own, and a real run with a checkpoint round trip |
 | `test_packaging.py` | The installed `disco_rl` is the submodule unchanged, every subpackage of it is shipped, and the Disco103 weights are installed |
-| `test_real_run.py` | A real gym-CDA `Algorithm` training with every component but `disco103` on (it excludes three of them), with the extension recorded in its checkpoint |
+| `test_real_run.py` | A real gym-CDA `Algorithm` training with every component but `disco103` on (`disco103` cannot be combined with three of them; its real run is in `test_disco103.py`), with the extension recorded in its checkpoint |
 
 Each component's file also builds a real Learner where it matters, so a change in gym-CDA's
 Learner stack shows up here rather than in a training run.
@@ -44,8 +45,8 @@ runs on pushes to `main` and on pull requests: it installs CPU PyTorch, gym-CDA 
 `GYM_CDA_REF` and this package, then runs the tests. Its checkout needs `submodules: true`, or
 the build finds no `disco_rl`.
 
-`GYM_CDA_REF` defaults to gym-CDA's `master`, which has the extension point since
-ChuaCheowHuan/gym-continuousDoubleAuction#314 merged. A manual run can test another ref with the
+`GYM_CDA_REF` defaults to gym-CDA's `master`, which is at version 2.1.0 or later since
+ChuaCheowHuan/gym-continuousDoubleAuction#340 merged. A manual run can test another ref with the
 `gym_cda_ref` input.
 
 ## 4. Compatibility with gym-CDA
@@ -85,7 +86,8 @@ gym-CDA's own tests of the contract are `test_extensions.py` and
    `config.py`. If it keeps Learner state, add it to `PER_LEARNER_STATE`. If it adds tensors to
    the module, add it to `STRUCTURAL_KEYS` and `components.MODULE_COMPONENTS`.
 4. Add its mixins to `DiscoLearnerMixin` and `DiscoModuleMixin` in `components.py`.
-5. Add a test file, and check that `test_real_run.py` still passes with every component on.
+5. Add a test file, and check that `test_real_run.py` still passes with every component on
+   (`disco103` aside).
 6. Document it in the README, [configuration.md](configuration.md),
    [architecture.md](architecture.md) and the [changelog](../CHANGELOG.md).
 

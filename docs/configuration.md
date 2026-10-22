@@ -75,9 +75,17 @@ yet clear:
 episode. Judge this run on held-out markets, not on training return, because fees change returns:
 
 ```json
-"market_variety": {"matching_rule": ["fifo", "pro_rata"], "step_clearing": ["sequential", "batch"]},
-"extension_settings": {"discorl": {"modules": ["policy_0"], "target_policy": true}}
+"environment": {
+  "market_variety": {"matching_rule": ["fifo", "pro_rata"], "step_clearing": ["sequential", "batch"]}
+},
+"extensions": {
+  "extensions_enabled": ["discorl"],
+  "extension_settings": {"discorl": {"modules": ["policy_0"], "target_policy": true}}
+}
 ```
+
+These are two groups of gym-CDA's `train_config.json`; with `--set`, pass
+`market_variety={...}` beside the two extension keys.
 
 **An in-run comparison.** With two trained agents, `policy_0` gets the components and `policy_1`
 stays plain PPO in the same league:

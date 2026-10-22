@@ -165,7 +165,9 @@ only what a torch Learner needs around it:
 
 It cannot be combined with `target_policy` or `policy_prediction`, which the rule supplies
 itself, or with `value_norm`, which would change the critic it keeps for `size`. It needs a
-stateless encoder. Each module grows to about 9.3M parameters against 0.26M, a run takes about
+stateless encoder. Its losses are logged per discrete component as
+`discorl_d103_<component>_{pi,y,z,aux,q}_loss`, and the size head's as
+`discorl_d103_size_policy_loss`. Each module grows to about 9.3M parameters against 0.26M, a run takes about
 4× as long, and each run holds about 4 GB of memory.
 
 ## Documentation
