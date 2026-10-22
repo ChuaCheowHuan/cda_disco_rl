@@ -8,7 +8,12 @@
 - **Changed:** `disco_rl` is now a dependency, so the package brings JAX, Haiku and rlax. It is
   the ChuaCheowHuan/disco_rl fork as the pinned git submodule `third_party/disco_rl`, installed
   unchanged as the top-level package `disco_rl` with the Disco103 weights mapped in at build time;
-  the fork is not edited. Anything `disco_rl` provides is imported, not reimplemented:
+  the fork is not edited.
+- **Removed:** `env_variety`, with `env_variety_keys` and `env_variety_choices`. The per-episode
+  market draw is now gym-CDA's env key `market_variety`
+  (ChuaCheowHuan/gym-continuousDoubleAuction#334), so the package no longer wraps the env. A
+  settings block that still names one of the three keys is refused as unknown; move the choices
+  to `market_variety` in the env or train config. Anything `disco_rl` provides is imported, not reimplemented:
   `adv_ema` and `value_norm` use `disco_rl.utils.MovingAverage`; the defaults of `target_coeff`,
   `policy_prediction_cost`, `adv_ema_decay` and `value_norm_decay` are read from `disco_rl`
   (same values as before). `MovingAverage` computes in float32, where the old code used float64.

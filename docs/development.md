@@ -27,7 +27,6 @@ The suite takes about two minutes on a CPU. Its tests are:
 | `test_target_policy.py` | The KL term, the EMA update after each step, and the Learner-state round trip |
 | `test_adv_ema.py` | The debiased moments, the connector's placement after GAE, and the state round trip |
 | `test_value_norm.py` | The module buffers, de-normalised `compute_values`, the loss on normalised targets, a checkpoint round trip, and its order after `EmaAdvantages` when `adv_ema` is on too |
-| `test_env_variety.py` | The per-episode draw, seeding, and the fee rules |
 | `test_policy_prediction.py` | The head's shape, the per-component KL, terminal masking, and the next-observation connector |
 | `test_disco103.py` | The settings and weights load from the installed `disco_rl`, the bridge's targets and carried state, the torch value loss against `disco_rl`'s own, and a real run with a checkpoint round trip |
 | `test_packaging.py` | The installed `disco_rl` is the submodule unchanged, every subpackage of it is shipped, and the Disco103 weights are installed |
@@ -58,8 +57,6 @@ What the package relies on in gym-CDA:
 
 - the `Extension` dataclass and `settings_for` in `train/extensions.py`
 - `CDAPPOTorchLearner._policy_value_loss`, the seam around PPO's loss
-- the env's `matching_rule`, `step_clearing`, `maker_fee_bps` and `taker_fee_bps` attributes, and
-  `validate_fee_rates`
 - `POLICY_PREFIX` from `train/policy/policy_handler.py`
 - `_collect` from `train/model/moe_learner.py`, which `policy_prediction` uses to discard the MoE
   routing statistics of its extra forward pass
