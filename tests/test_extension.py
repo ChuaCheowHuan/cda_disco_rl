@@ -53,6 +53,9 @@ class TestEnabledWithEverythingOffChangesNothing:
     def test_every_component_defaults_off(self):
         assert not any(config.DEFAULTS[name] for name in config.COMPONENTS)
 
+    def test_the_env_is_never_wrapped(self):
+        assert cda_discorl.EXTENSION.env_wrapper is None
+
     def test_the_learner_only_gains_the_switched_mixin(self):
         composed = _learner_class(_cfg())
         assert composed.__mro__[1] is cda_discorl.EXTENSION.learner_mixin
@@ -114,14 +117,11 @@ class TestValidation:
         with pytest.raises(ValueError, match=key):
             _cfg({key: value})
 
-    def test_env_variety_keys_must_be_env_settings(self):
-        with pytest.raises(ValueError, match="does not have"):
-            _cfg({"env_variety_keys": ["no_such_key"]})
-
-    @pytest.mark.parametrize("key", ["n_hist", "book_mode", "num_of_agents"])
-    def test_env_variety_may_not_vary_a_structural_key(self, key):
-        with pytest.raises(ValueError, match="may only name"):
-            _cfg({"env_variety_keys": [key]})
+    @pytest.mark.parametrize("key", ["env_variety", "env_variety_keys", "env_variety_choices"])
+    def test_env_variety_is_gone_in_favour_of_market_variety(self, key):
+        # The per-episode market draw is gym-CDA's own `market_variety` env key.
+        with pytest.raises(ValueError, match="unknown keys"):
+            _cfg({key: True})
 
 
 class TestCombinationRules:

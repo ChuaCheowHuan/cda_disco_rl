@@ -28,7 +28,6 @@ from typing import Any, Dict
 
 from gym_continuousDoubleAuction.train.policy.policy_handler import POLICY_PREFIX
 
-from cda_discorl import env_variety
 from cda_discorl.upstream import HYPER_PARAMS, MOVING_AVERAGE_DECAY
 
 DEFAULTS: Dict[str, Any] = {
@@ -44,15 +43,6 @@ DEFAULTS: Dict[str, Any] = {
     # Critic learns returns normalised by a debiased EMA of the value targets.
     "value_norm": False,
     "value_norm_decay": MOVING_AVERAGE_DECAY,
-    # Per-episode draw of these env settings, each from its list of choices.
-    "env_variety": False,
-    "env_variety_keys": ["matching_rule", "step_clearing", "maker_fee_bps", "taker_fee_bps"],
-    "env_variety_choices": {
-        "matching_rule": ["fifo", "pro_rata"],
-        "step_clearing": ["sequential", "batch"],
-        "maker_fee_bps": [0, 1],
-        "taker_fee_bps": [0, 2],
-    },
     # Auxiliary head predicting the next step's policy. Experimental.
     "policy_prediction": False,
     "policy_prediction_cost": HYPER_PARAMS["aux_policy_cost"],
@@ -67,7 +57,6 @@ COMPONENTS = (
     "target_policy",
     "adv_ema",
     "value_norm",
-    "env_variety",
     "policy_prediction",
     "disco103",
 )
@@ -142,12 +131,3 @@ def validate(settings: Dict[str, Any], cfg) -> None:
     for name in ("policy_prediction", "disco103"):
         if settings[name] and cfg.encoder_type == "lstm":
             _fail(f"{name} needs a stateless encoder; encoder_type is lstm.")
-
-    env_keys = settings["env_variety_keys"]
-    missing = sorted(set(env_keys) - set(cfg.env_config))
-    if missing:
-        _fail(f"env_variety_keys names {missing}, which the env config does not have.")
-    try:
-        env_variety.validate_choices(env_keys, settings["env_variety_choices"])
-    except ValueError as err:
-        _fail(str(err))

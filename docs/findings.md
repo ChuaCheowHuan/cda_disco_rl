@@ -40,7 +40,8 @@ What it does show:
 - **Policy prediction** had a lower mean return, still within the spread. It stays in the
   package, marked experimental.
 - **Env variety** draws fees per episode, so its returns come from a different market from the
-  other arms' and are not directly comparable.
+  other arms' and are not directly comparable. It has since moved to gym-CDA as the env key
+  `market_variety`, which draws from the env's own seeded generator.
 - **Value normalisation**, run later on the same settings, gave the best critic of any arm
   (explained variance 0.94 against PPO's 0.82, and steadier across seeds). Its mean return is
   lower than PPO's, but within the spread between seeds. At the end of seed 0 its running

@@ -59,7 +59,6 @@ The other components are the mechanisms that do not depend on the reward's scale
 | Target policy | `target_policy` | KL from the policy to an EMA copy of itself | Recommended; ahead of PPO on average, not significantly |
 | Advantage EMA | `adv_ema` | Normalises advantages by a lifetime EMA of their scale | Recommended |
 | Value normalisation | `value_norm` | Critic learns returns on a unit scale | Best critic in testing; return within noise of PPO |
-| Env variety | `env_variety` | Redraws some market rules at the start of every episode | Recommended for generalisation |
 | Policy prediction | `policy_prediction` | Auxiliary head predicting the next step's policy | Experimental |
 | Disco103 | `disco103` | The frozen discovered rule replaces PPO's loss on the discrete actions | Experimental; did not beat PPO at about 260k steps |
 
@@ -115,27 +114,14 @@ The moments are module buffers, saved and restored with the weights, and logged 
 `discorl_value_norm_mean` and `discorl_value_norm_std`. They are not PopArt: when the moments move,
 the value moves with them for one update.
 
-## Env variety
+## Market variety (in gym-CDA)
 
 DiscoRL's rule generalised because it was discovered across many environments, and a league here
-trains on one fixed market. With `env_variety` on, every episode draws each setting in
-`env_variety_keys` from its list in `env_variety_choices`:
-
-| Key | Default choices | When the env reads it |
-|---|---|---|
-| `matching_rule` | `fifo`, `pro_rata` | When `reset` builds the episode's book |
-| `step_clearing` | `sequential`, `batch` | Every step |
-| `maker_fee_bps` | `0`, `1` | Each trader's account, which `reset` keeps |
-| `taker_fee_bps` | `0`, `2` | The same |
-
-Only these four are supported: none changes the observation or action space, and none needs the
-env rebuilt. Every fee pair the lists could produce is checked against the env's own fee rules
-when the config is built. A seeded `reset` repeats its draw. The settings in force are on
-`env.discorl_env_settings`. The draw applies to the whole market, so to every agent, whichever
-modules `modules` selects.
-
-Because fees change returns, compare an env-variety run with others on held-out markets, not on
-training return.
+trains on one fixed market. Redrawing the market's rules at every episode is gym-CDA's own env key
+`market_variety` ([gym-CDA docs/18_configuration.md](https://github.com/ChuaCheowHuan/gym-continuousDoubleAuction/blob/master/docs/18_configuration.md) §3.5), not a component of this
+package. It draws `matching_rule`, `step_clearing` and the fees from lists, with the env's seeded
+generator, and reports the draw in each agent's reset info. Version 0.1.0 had it here as
+`env_variety`.
 
 ## Policy prediction
 

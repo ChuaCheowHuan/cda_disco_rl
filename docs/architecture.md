@@ -14,17 +14,16 @@ pieces fit together. gym-CDA's side of the contract is its
 discorl = "cda_discorl:EXTENSION"
 ```
 
-`cda_discorl/__init__.py` builds that `Extension` from four pieces:
+`cda_discorl/__init__.py` builds that `Extension` from three pieces:
 
 | Field | Value | Role |
 |---|---|---|
 | `defaults`, `validate` | `config.DEFAULTS`, `config.validate` | Every setting and the rules between them ([configuration.md](configuration.md)) |
 | `learner_mixin` | `components.DiscoLearnerMixin` | Loss terms, connectors and Learner state |
 | `module_mixin`, `module_ids` | `components.DiscoModuleMixin`, `components.module_ids` | Extra buffers and heads, only on the selected modules |
-| `env_wrapper` | `env_variety.wrap` | The per-episode market draw |
 
 `structural_keys` lists `value_norm`, `policy_prediction` and `disco103`, the settings that add
-tensors to a module. gym-CDA refuses a resume that changes either.
+tensors to a module. gym-CDA refuses a resume that changes any of them.
 
 ## 2. How the mixins compose
 
@@ -62,7 +61,6 @@ it, rather than `compute_loss_for_module`, keeps the MoE and JEPA terms.
 | `target_policy` | `build` deep-copies each selected module; `_policy_value_loss` adds `target_kl_cost * KL(pi_target ‖ pi)`; `apply_gradients` moves the copy `1 - target_coeff` toward the online weights | – | – | Target weights, in the Learner state under `discorl_target_policy` |
 | `adv_ema` | `build` inserts the connector | – | `EmaAdvantages`, after `GeneralAdvantageEstimation` | EMA moments, in the Learner state under `discorl_adv_ema` |
 | `value_norm` | `build` inserts the connector; `_policy_value_loss` swaps in normalised value targets and reads the raw head | `setup` adds float64 moment buffers; `compute_values` maps the head back to reward units | `ValueNormMoments`, after `GeneralAdvantageEstimation` | Moment buffers, with the module weights; `set_state` restores them exactly as saved, past RLlib's cast to float32 |
-| `env_variety` | – | – | – | None; a seeded `reset` repeats its draw |
 | `policy_prediction` | `build` adds next observations to the batch if the run lacks them; `_policy_value_loss` adds the prediction KL | `setup` adds the `aux_pi` head (Learner copy only); `_forward_train` fills it | `AddNextObservationsFromEpisodesToTrainBatch`, when missing | The head's weights, with the module |
 | `disco103` | `build` creates the `Bridge`, an EMA target copy per module and a meta-state per action component; `_policy_value_loss` replaces PPO's loss; `apply_gradients` moves the target copy | `setup` adds `y`, `z`, `aux_pi` and `q` heads per discrete component (Learner copy only); `_forward_train` fills them | `Disco103Targets`, after `GeneralAdvantageEstimation` | Target weights and meta-states, in the Learner state under `discorl_disco103` |
 
@@ -85,12 +83,10 @@ module's `_vn_raw` flag around the `super()` call, so PPO's critic loss compares
 targets with the head's normalised output. Everywhere else, `compute_values` returns
 `mean + std * head`, so GAE and RLlib's metrics keep reward units.
 
-### Env variety
+### No env wrapper
 
-`wrap` replaces the env's `reset`. It draws one choice per key, applies it through the env's own
-setters, and records it on `env.discorl_env_settings`. Only settings that change neither the
-observation nor the action space are allowed, because gym-CDA builds the spaces before any
-wrapper runs.
+The package sets no `env_wrapper`, so the env is never wrapped. The per-episode market draw is
+gym-CDA's `market_variety` env key.
 
 ## 4. Checkpoints and resumes
 
@@ -118,7 +114,6 @@ flow through it inside RLlib's Learner, or what is specific to gym-CDA:
 | The Disco103 heads (`y`, `z`, `aux_pi`, `q`) and policy prediction's `aux_pi` head | They are torch parameters; Disco103's sizes and init scale are read from `disco_rl` |
 | `ema_update_`, the target-network update | It updates torch parameters in place; upstream's is a JAX tree map inside `unroll_meta_net` |
 | `discrete_slices`, the time-major packing, the RLlib connectors | They deal with gym-CDA's Dict action and RLlib's batches, which `disco_rl` does not know |
-| `env_variety` | gym-CDA market randomisation; `disco_rl` has no counterpart |
 | `target_kl_cost`, `disco103_reward_scale` | This package's own settings; `disco_rl` has no counterpart |
 
 | Component | From `disco_rl` |
@@ -126,5 +121,4 @@ flow through it inside RLlib's Learner, or what is specific to gym-CDA:
 | `adv_ema`, `value_norm` | Imported: `utils.MovingAverage`, and the decay default from `DiscoUpdateRule`'s `moving_average_decay` |
 | `target_policy` | Imported: the `target_coeff` default (`target_params_coeff`). The idea is `target_params` in `update_rules/disco.py` |
 | `policy_prediction` | Imported: the cost default (`aux_policy_cost`). The idea is `aux_pi` in `update_rules/disco.py` |
-| `env_variety` | The paper's training across many environments; there is no upstream code |
 | `disco103` | Imported: `DiscoUpdateRule` (`disco_rl/update_rules/disco.py`), `get_settings_disco` (`disco_rl/agent.py`), `disco_rl/update_rules/weights/disco_103.npz`, and `value_utils` for the value target |

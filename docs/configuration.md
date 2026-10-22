@@ -31,9 +31,6 @@ With gym-CDA's command-line tools, pass the same values with `--set`:
 | `adv_ema_decay` | `0.99` | [0, 1) | Decay of that EMA |
 | `value_norm` | `false` | bool | The critic learns returns normalised by an EMA of the targets' moments |
 | `value_norm_decay` | `0.99` | [0, 1) | Decay of that EMA |
-| `env_variety` | `false` | bool | Redraw some market rules at the start of every episode |
-| `env_variety_keys` | `["matching_rule", "step_clearing", "maker_fee_bps", "taker_fee_bps"]` | Subset of those four | Which settings to redraw |
-| `env_variety_choices` | See §3 | A non-empty list per key | The values each key is drawn from |
 | `policy_prediction` | `false` | bool | Auxiliary head predicting the next step's policy (experimental) |
 | `policy_prediction_cost` | `1.0` | ≥ 0 | Weight of the prediction loss |
 | `disco103` | `false` | bool | The frozen Disco103 rule replaces PPO's loss on the discrete actions (experimental) |
@@ -52,24 +49,12 @@ With gym-CDA's command-line tools, pass the same values with `--set`:
 - `policy_prediction` or `disco103` is on with `encoder_type: lstm`, because each needs a
   stateless encoder.
 - `disco103_reward_scale` is not positive.
-- `env_variety_keys` names a key the env config lacks, or one outside the four supported keys.
-- An `env_variety_choices` list is empty, holds a matching rule or clearing mode the env does not
-  know, or can draw a maker and taker fee pair the env's fee rules reject.
 
 On a resume, gym-CDA also refuses any setting that differs from the checkpoint's. Changing
 `value_norm`, `policy_prediction` or `disco103` is refused as structural, because each adds
 tensors to the module.
 
-## 3. Env variety choices
-
-| Key | Default choices | Allowed values |
-|---|---|---|
-| `matching_rule` | `["fifo", "pro_rata"]` | The order book's matching rules |
-| `step_clearing` | `["sequential", "batch"]` | The env's clearing modes |
-| `maker_fee_bps` | `[0, 1]` | Any fee the env's fee rules accept with every taker choice |
-| `taker_fee_bps` | `[0, 2]` | The same, with every maker choice |
-
-## 4. Ready-made settings blocks
+## 3. Ready-made settings blocks
 
 **The recommended set.** These components did not hurt the critic in the comparison
 ([findings.md](findings.md)):
@@ -85,11 +70,13 @@ yet clear:
 {"discorl": {"modules": ["policy_0"], "value_norm": true}}
 ```
 
-**Training for generalisation.** Judge this run on held-out markets, not on training return,
-because fees change returns:
+**Training for generalisation.** Pair a component with gym-CDA's `market_variety` env key
+([gym-CDA docs/18_configuration.md](https://github.com/ChuaCheowHuan/gym-continuousDoubleAuction/blob/master/docs/18_configuration.md) §3.5), which redraws the market's rules at every
+episode. Judge this run on held-out markets, not on training return, because fees change returns:
 
 ```json
-{"discorl": {"modules": ["policy_0"], "target_policy": true, "env_variety": true}}
+"market_variety": {"matching_rule": ["fifo", "pro_rata"], "step_clearing": ["sequential", "batch"]},
+"extension_settings": {"discorl": {"modules": ["policy_0"], "target_policy": true}}
 ```
 
 **An in-run comparison.** With two trained agents, `policy_0` gets the components and `policy_1`
