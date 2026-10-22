@@ -104,10 +104,12 @@ its own copy of the state, fitted to its own shard of the batch.
 
 ## 5. Where each mechanism comes from
 
-The package depends on [disco_rl](https://github.com/google-deepmind/disco_rl) (installed from
-the ChuaCheowHuan/disco_rl fork) and imports whatever it provides. `cda_discorl/upstream.py`
-holds the shared imports, and `cda_discorl/disco103/bridge.py` the rule's. No `disco_rl` code or
-weights are copied into this package. What stays local is what must be torch, because gradients
+The package depends on [disco_rl](https://github.com/google-deepmind/disco_rl) and imports
+whatever it provides. The ChuaCheowHuan/disco_rl fork is the git submodule `third_party/disco_rl`,
+pinned to a commit and never edited; `pyproject.toml` maps it to the top-level package
+`disco_rl` and adds the Disco103 weights as package data, which the fork's own packaging leaves
+out. `cda_discorl/upstream.py` holds the shared imports, and `cda_discorl/disco103/bridge.py`
+the rule's. No `disco_rl` code or weights are copied into this repository. What stays local is what must be torch, because gradients
 flow through it inside RLlib's Learner, or what is specific to gym-CDA:
 
 | Kept local | Why it cannot be imported |

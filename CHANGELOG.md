@@ -5,8 +5,10 @@
 - **Added:** `disco103`, the frozen Disco103 rule in place of PPO's loss on the discrete action
   components (experimental), and `disco103_reward_scale`. It imports the rule, its settings and
   its weights from `disco_rl`; none of them are copied here.
-- **Changed:** `disco_rl` (from ChuaCheowHuan/disco_rl) is now a dependency, so the package
-  brings JAX, Haiku and rlax. Anything `disco_rl` provides is imported, not reimplemented:
+- **Changed:** `disco_rl` is now a dependency, so the package brings JAX, Haiku and rlax. It is
+  the ChuaCheowHuan/disco_rl fork as the pinned git submodule `third_party/disco_rl`, installed
+  unchanged as the top-level package `disco_rl` with the Disco103 weights mapped in at build time;
+  the fork is not edited. Anything `disco_rl` provides is imported, not reimplemented:
   `adv_ema` and `value_norm` use `disco_rl.utils.MovingAverage`; the defaults of `target_coeff`,
   `policy_prediction_cost`, `adv_ema_decay` and `value_norm_decay` are read from `disco_rl`
   (same values as before). `MovingAverage` computes in float32, where the old code used float64.

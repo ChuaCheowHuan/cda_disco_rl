@@ -102,7 +102,7 @@ this comparison it learned no better than PPO and cost far more. Each module had
 against 0.26M, each run took about 4× as long, and each held about 4 GB of memory. It was
 meta-trained on agent lifetimes in the millions of steps, against about 120 optimiser steps here.
 
-It is back in 0.2.0 as an experimental `[disco103]` extra that imports the rule from `disco_rl`.
+It is back in 0.2.0 as the experimental `disco103` component, which imports the rule from `disco_rl`.
 These numbers come from the earlier version, which ran the same rule through the same kind of
 bridge; the new one has not been compared yet.
 

@@ -30,6 +30,7 @@ The suite takes about two minutes on a CPU. Its tests are:
 | `test_env_variety.py` | The per-episode draw, seeding, and the fee rules |
 | `test_policy_prediction.py` | The head's shape, the per-component KL, terminal masking, and the next-observation connector |
 | `test_disco103.py` | The settings and weights load from the installed `disco_rl`, the bridge's targets and carried state, the torch value loss against `disco_rl`'s own, and a real run with a checkpoint round trip |
+| `test_packaging.py` | The installed `disco_rl` is the submodule unchanged, every subpackage of it is shipped, and the Disco103 weights are installed |
 | `test_real_run.py` | A real gym-CDA `Algorithm` training with every component but `disco103` on (it excludes three of them), with the extension recorded in its checkpoint |
 
 Each component's file also builds a real Learner where it matters, so a change in gym-CDA's
@@ -41,7 +42,8 @@ Style: `ruff format .` (line length 100) and `pyflakes cda_discorl tests`.
 
 The workflow is [`.github/workflows/cda_discorl.yml`](../.github/workflows/cda_discorl.yml). It
 runs on pushes to `main` and on pull requests: it installs CPU PyTorch, gym-CDA at
-`GYM_CDA_REF` and this package, then runs the tests.
+`GYM_CDA_REF` and this package, then runs the tests. Its checkout needs `submodules: true`, or
+the build finds no `disco_rl`.
 
 `GYM_CDA_REF` defaults to gym-CDA's `master`, which has the extension point since
 ChuaCheowHuan/gym-continuousDoubleAuction#314 merged. A manual run can test another ref with the
@@ -63,8 +65,12 @@ What the package relies on in gym-CDA:
   routing statistics of its extra forward pass
 
 What the package imports from `disco_rl` is listed in [architecture.md](architecture.md) §5.
-It is installed from the ChuaCheowHuan/disco_rl fork, which must ship
-`update_rules/weights/disco_103.npz` in its wheel.
+`disco_rl` is the git submodule `third_party/disco_rl` (the ChuaCheowHuan/disco_rl fork, pinned
+and unchanged), so clone with `--recurse-submodules` and check out CI with `submodules: true`.
+To move to a newer fork commit, check it out in the submodule, commit the new pin and run the
+tests. `pyproject.toml` lists the subpackages shipped, the weights file and the fork's runtime
+dependencies; a fork commit that adds a subpackage or a dependency needs them added there.
+ruff excludes `third_party`, so the fork's code is never reformatted.
 
 gym-CDA's own tests of the contract are `test_extensions.py` and
 `integration/test_extensions_wiring.py`.

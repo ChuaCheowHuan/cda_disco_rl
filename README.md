@@ -4,13 +4,15 @@ Learning mechanisms from *Discovering state-of-the-art reinforcement learning al
 (Oh et al., 2025) for the PPO learner in
 [gym-continuousDoubleAuction](https://github.com/ChuaCheowHuan/gym-continuousDoubleAuction)
 (gym-CDA), packaged as a training extension. It depends on DeepMind's
-[`disco_rl`](https://github.com/google-deepmind/disco_rl), installed from the
+[`disco_rl`](https://github.com/google-deepmind/disco_rl), through the
 [ChuaCheowHuan/disco_rl](https://github.com/ChuaCheowHuan/disco_rl) fork, and imports whatever
 `disco_rl` provides instead of reimplementing it: the Disco103 rule and its weights, the debiased
 moving average, the published settings and costs. What stays local is what has to be PyTorch,
 because gradients flow through it inside RLlib's Learner: the loss terms, the extra heads and
-the update of a torch target network. No `disco_rl` code or weights are copied into this
-package ([docs/architecture.md](docs/architecture.md) §5 lists what comes from where).
+the update of a torch target network. The fork is the git submodule `third_party/disco_rl`,
+pinned to a commit and installed unchanged with this package; none of its code or weights are
+copied into this repository, and the fork itself is not edited
+([docs/architecture.md](docs/architecture.md) §5 lists what comes from where).
 
 Installing it changes no run. A run uses it only when its train config lists it:
 
@@ -28,11 +30,18 @@ gym-CDA is not on PyPI, so install it first, then this package:
 
 ```bash
 pip install "gym_continuousDoubleAuction @ git+https://github.com/ChuaCheowHuan/gym-continuousDoubleAuction"
-pip install "git+https://github.com/ChuaCheowHuan/cda_disco_rl"
+pip install "cda-discorl @ git+https://github.com/ChuaCheowHuan/cda_disco_rl"
 ```
 
-The second line also installs `disco_rl` from the fork, with JAX, Haiku, rlax and the Disco103
-weights. JAX runs on the CPU here, beside PyTorch; it needs no GPU.
+pip fetches the submodule, so the second line also installs `disco_rl` (as a top-level package,
+with the Disco103 weights), JAX, Haiku and rlax. From a clone, fetch it yourself:
+
+```bash
+git clone --recurse-submodules https://github.com/ChuaCheowHuan/cda_disco_rl
+pip install -e cda_disco_rl   # or: git submodule update --init, in an existing clone
+```
+
+JAX runs on the CPU here, beside PyTorch; it needs no GPU.
 
 ## What is in it, and why
 
