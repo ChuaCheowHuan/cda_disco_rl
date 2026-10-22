@@ -19,7 +19,7 @@ or the first release tag that carries it.
 OMP_NUM_THREADS=1 python -m pytest -q
 ```
 
-The suite takes about a minute on a CPU. Its tests are:
+The suite takes about two minutes on a CPU. Its tests are:
 
 | File | What it checks |
 |---|---|
@@ -29,7 +29,8 @@ The suite takes about a minute on a CPU. Its tests are:
 | `test_value_norm.py` | The module buffers, de-normalised `compute_values`, the loss on normalised targets, a checkpoint round trip, and its order after `EmaAdvantages` when `adv_ema` is on too |
 | `test_env_variety.py` | The per-episode draw, seeding, and the fee rules |
 | `test_policy_prediction.py` | The head's shape, the per-component KL, terminal masking, and the next-observation connector |
-| `test_real_run.py` | A real gym-CDA `Algorithm` training with every component on, with the extension recorded in its checkpoint |
+| `test_disco103.py` | The settings and weights load from the installed `disco_rl`, the bridge's targets and carried state, the torch value loss against `disco_rl`'s own, and a real run with a checkpoint round trip |
+| `test_real_run.py` | A real gym-CDA `Algorithm` training with every component but `disco103` on (it excludes three of them), with the extension recorded in its checkpoint |
 
 Each component's file also builds a real Learner where it matters, so a change in gym-CDA's
 Learner stack shows up here rather than in a training run.
@@ -61,19 +62,25 @@ What the package relies on in gym-CDA:
 - `_collect` from `train/model/moe_learner.py`, which `policy_prediction` uses to discard the MoE
   routing statistics of its extra forward pass
 
+What the package imports from `disco_rl` is listed in [architecture.md](architecture.md) §5.
+It is installed from the ChuaCheowHuan/disco_rl fork, which must ship
+`update_rules/weights/disco_103.npz` in its wheel.
+
 gym-CDA's own tests of the contract are `test_extensions.py` and
 `integration/test_extensions_wiring.py`.
 
 ## 5. Adding a component
 
-1. Write the mixins in a new module. Check the component's switch in `build`, `setup` or the loss,
+1. Import from `disco_rl` (through `upstream.py`) anything it already provides: functions,
+   settings, defaults. Write locally only what must be torch, or what is specific to gym-CDA.
+2. Write the mixins in a new module. Check the component's switch in `build`, `setup` or the loss,
    and call `super()` in every overridden method.
-2. Add its keys to `DEFAULTS`, its switch to `COMPONENTS`, and its rules to `validate` in
+3. Add its keys to `DEFAULTS`, its switch to `COMPONENTS`, and its rules to `validate` in
    `config.py`. If it keeps Learner state, add it to `PER_LEARNER_STATE`. If it adds tensors to
    the module, add it to `STRUCTURAL_KEYS` and `components.MODULE_COMPONENTS`.
-3. Add its mixins to `DiscoLearnerMixin` and `DiscoModuleMixin` in `components.py`.
-4. Add a test file, and check that `test_real_run.py` still passes with every component on.
-5. Document it in the README, [configuration.md](configuration.md),
+4. Add its mixins to `DiscoLearnerMixin` and `DiscoModuleMixin` in `components.py`.
+5. Add a test file, and check that `test_real_run.py` still passes with every component on.
+6. Document it in the README, [configuration.md](configuration.md),
    [architecture.md](architecture.md) and the [changelog](../CHANGELOG.md).
 
 ## 6. Releasing

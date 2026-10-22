@@ -27,7 +27,7 @@ Numbers are the final iteration's mean ± standard deviation across seeds. "Retu
 | Policy prediction | 0.029 ± 0.119 | 0.863 ± 0.124 | 0.132 ± 0.015 |
 | Value normalisation | 0.117 ± 0.088 | 0.936 ± 0.032 | 0.126 ± 0.021 |
 | Categorical value (removed) | -0.028 ± 0.038 | 0.248 ± 0.150 | 0.086 ± 0.031 |
-| Disco103 (removed) | -0.006 ± 0.300 | – | 0.080 ± 0.024 |
+| Disco103 | -0.006 ± 0.300 | – | 0.080 ± 0.024 |
 
 None of the components separated from PPO on return: the spread between seeds (about ±0.2) is
 larger than any gap between arms. At this budget the comparison is a check that each component
@@ -101,6 +101,10 @@ Disco103 is DeepMind's frozen, meta-learned update rule, which replaces PPO's lo
 this comparison it learned no better than PPO and cost far more. Each module had 9.3M parameters
 against 0.26M, each run took about 4× as long, and each held about 4 GB of memory. It was
 meta-trained on agent lifetimes in the millions of steps, against about 120 optimiser steps here.
+
+It is back in 0.2.0 as an experimental `[disco103]` extra that imports the rule from `disco_rl`.
+These numbers come from the earlier version, which ran the same rule through the same kind of
+bridge; the new one has not been compared yet.
 
 ## 5. Reproducing a run
 
