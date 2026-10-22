@@ -87,7 +87,9 @@ class TestEveryBuiltComponentTogether:
         extensions.discover.cache_clear()
         ray.init(ignore_reinit_error=True, include_dashboard=False, log_to_driver=False, num_cpus=3)
         cls.log_dir = tempfile.mkdtemp()
-        settings = {n: True for n in config.BUILT}
+        # Disco103 replaces PPO's loss and excludes three of the others; its own
+        # real run is in test_disco103.py.
+        settings = {n: True for n in config.BUILT if n != "disco103"}
         cfg = TrainConfig(
             **{**TEST_CFG, "num_env_runners": 1},
             extension_settings={"discorl": settings},

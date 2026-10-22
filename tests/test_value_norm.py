@@ -14,7 +14,7 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from gym_continuousDoubleAuction.train import extensions
 from gym_continuousDoubleAuction.train.train import TrainConfig, build_config
 
-from cda_discorl import adv_ema, config
+from cda_discorl import adv_ema, config, upstream
 from cda_discorl import value_norm as vn
 
 
@@ -55,7 +55,7 @@ class TestModule:
     def test_the_moments_match_the_advantage_emas(self):
         torch.manual_seed(0)
         m = _module(on=True, decay=0.9)
-        ref = adv_ema.EmaMoments(0.9)
+        ref = upstream.EmaMoments(0.9)
         for scale in (0.004, 0.01, 0.002):
             t = torch.randn(64, dtype=torch.float64) * scale + 0.001
             m.update_value_norm(t)
