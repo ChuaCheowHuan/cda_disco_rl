@@ -12,11 +12,12 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from gym_continuousDoubleAuction.train import extensions
 from gym_continuousDoubleAuction.train.train import TrainConfig, build_config
 
-from cda_discorl import adv_ema
+from cda_discorl import adv_ema, upstream
 
 
 def _reference(batches, decay):
-    """DiscoRL's MovingAverage, step by step, on plain floats."""
+    """DiscoRL's MovingAverage written out on float64, to check the wrapper feeds it
+    the right state. It computes in float32, hence the tolerance below."""
     m1 = m2 = 0.0
     prod = 1.0
     out = []
@@ -34,33 +35,33 @@ class TestMoments:
     def test_matches_discorls_moving_average(self):
         torch.manual_seed(0)
         batches = [torch.randn(32, dtype=torch.float64) * s + s for s in (1.0, 3.0, 0.1, 10.0)]
-        m = adv_ema.EmaMoments(decay=0.9)
+        m = upstream.EmaMoments(decay=0.9)
         got = []
         for b in batches:
             m.update(b)
             got.append(m.normalize(b))
         for a, b in zip(got, _reference(batches, 0.9)):
-            assert torch.allclose(a, b)
+            assert torch.allclose(a, b, rtol=1e-4, atol=1e-5)
 
     def test_the_first_batch_is_standardised_as_before(self):
         """Debiasing makes step one's moments the batch's own."""
         b = torch.tensor([1.0, 2.0, 3.0, 6.0], dtype=torch.float64)
-        m = adv_ema.EmaMoments(decay=0.99)
+        m = upstream.EmaMoments(decay=0.99)
         m.update(b)
         expected = (b - b.mean()) / b.std(unbiased=False)
         assert torch.allclose(m.normalize(b), expected, atol=1e-5)
 
     def test_a_small_batch_keeps_its_scale_against_the_past(self):
-        m = adv_ema.EmaMoments(decay=0.99)
+        m = upstream.EmaMoments(decay=0.99)
         m.update(torch.randn(256) * 10.0)
         small = torch.randn(256) * 0.1
         m.update(small)
         assert m.normalize(small).std() < 0.1
 
     def test_state_round_trips(self):
-        m = adv_ema.EmaMoments(decay=0.9)
+        m = upstream.EmaMoments(decay=0.9)
         m.update(torch.randn(8))
-        n = adv_ema.EmaMoments(decay=0.9)
+        n = upstream.EmaMoments(decay=0.9)
         n.set_state(m.get_state())
         assert n.get_state() == m.get_state()
 
@@ -95,7 +96,7 @@ class TestConnector:
         piece = adv_ema.EmaAdvantages(["policy_0"], decay=0.9)
         piece(rl_module=rl_module, batch=batch)
 
-        expected = adv_ema.EmaMoments(0.9)
+        expected = upstream.EmaMoments(0.9)
         expected.update(targets - values)
         assert torch.allclose(
             batch["policy_0"][Postprocessing.ADVANTAGES], expected.normalize(targets - values)

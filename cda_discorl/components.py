@@ -7,17 +7,21 @@ calls `super()`, so all of them run.
 """
 
 from cda_discorl.adv_ema import AdvEmaLearner
+from cda_discorl.disco103.heads import Disco103Module
+from cda_discorl.disco103.learner import Disco103Learner
 from cda_discorl.policy_prediction import PolicyPredictionLearner, PolicyPredictionModule
 from cda_discorl.target_policy import TargetPolicyLearner
 from cda_discorl.value_norm import ValueNormLearner, ValueNormModule
 
 #: Components that need the module mixin on the modules they apply to.
-MODULE_COMPONENTS = ("value_norm", "policy_prediction")
+MODULE_COMPONENTS = ("value_norm", "policy_prediction", "disco103")
 
 
 class DiscoLearnerMixin(
     # First, so every critic loss after it sees the normalised targets.
     ValueNormLearner,
+    # Replaces PPO's loss when on, so the loss mixins after it must be off.
+    Disco103Learner,
     TargetPolicyLearner,
     PolicyPredictionLearner,
     AdvEmaLearner,
@@ -25,7 +29,7 @@ class DiscoLearnerMixin(
     pass
 
 
-class DiscoModuleMixin(ValueNormModule, PolicyPredictionModule):
+class DiscoModuleMixin(ValueNormModule, PolicyPredictionModule, Disco103Module):
     pass
 
 

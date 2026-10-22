@@ -107,6 +107,7 @@ class TestValidation:
             ("policy_prediction_cost", -1.0),
             ("adv_ema_decay", -0.1),
             ("value_norm_decay", 1.0),
+            ("disco103_reward_scale", 0.0),
         ],
     )
     def test_out_of_range_values_are_refused(self, key, value):
@@ -137,8 +138,36 @@ class TestCombinationRules:
         with pytest.raises(ValueError, match="num_learners"):
             self._check(monkeypatch, {name: True}, num_learners=2)
 
-    def test_every_component_together_is_allowed(self, monkeypatch):
-        self._check(monkeypatch, {name: True for name in config.COMPONENTS})
+    def test_every_component_but_disco103_together_is_allowed(self, monkeypatch):
+        self._check(monkeypatch, {name: True for name in config.COMPONENTS if name != "disco103"})
+
+    @pytest.mark.parametrize("name", config.DISCO103_EXCLUDES)
+    def test_disco103_refuses_the_components_it_excludes(self, monkeypatch, name):
+        with pytest.raises(ValueError, match="cannot be combined"):
+            self._check(monkeypatch, {"disco103": True, name: True})
+
+    def test_disco103_combines_with_the_rest(self, monkeypatch):
+        rest = set(config.COMPONENTS) - set(config.DISCO103_EXCLUDES)
+        self._check(monkeypatch, {name: True for name in rest})
+
+
+class TestDefaultsFromDiscoRL:
+    """Defaults DiscoRL defines are imported from it, not restated here."""
+
+    def test_they_are_the_published_values(self):
+        from disco_rl import agent
+
+        hp = agent.get_settings_disco().hyper_params
+        assert config.DEFAULTS["target_coeff"] == hp.target_params_coeff
+        assert config.DEFAULTS["policy_prediction_cost"] == hp.aux_policy_cost
+
+    def test_the_decays_are_the_update_rules(self):
+        import inspect
+
+        from disco_rl.update_rules.disco import DiscoUpdateRule
+
+        want = inspect.signature(DiscoUpdateRule).parameters["moving_average_decay"].default
+        assert config.DEFAULTS["adv_ema_decay"] == config.DEFAULTS["value_norm_decay"] == want
 
 
 class TestResume:

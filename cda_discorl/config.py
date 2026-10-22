@@ -13,9 +13,13 @@ changes nothing; `modules` limits the components to some trainable modules,
 leaving the rest as plain PPO for an in-run comparison.
 
 The components are the DiscoRL mechanisms that do not depend on the reward's
-scale, plus `value_norm`, which removes that dependence from the critic. The
-categorical critic and the frozen Disco103 rule are not here: at this market's
-scale and budget neither learned (see the README).
+scale, plus `value_norm`, which removes that dependence from the critic, and
+`disco103`, the frozen discovered rule itself, which is experimental: at this
+market's scale and budget it has not learned (see the README).
+
+Defaults that DiscoRL defines are imported from `disco_rl` (`upstream`): the
+target-network coefficient, the policy-prediction cost and the moving-average
+decay. The rest are this package's own.
 """
 
 from __future__ import annotations
@@ -25,20 +29,21 @@ from typing import Any, Dict
 from gym_continuousDoubleAuction.train.policy.policy_handler import POLICY_PREFIX
 
 from cda_discorl import env_variety
+from cda_discorl.upstream import HYPER_PARAMS, MOVING_AVERAGE_DECAY
 
 DEFAULTS: Dict[str, Any] = {
     # Trainable modules the components apply to; the others stay plain PPO.
     "modules": ["policy_0"],
     # KL from the policy to an EMA copy of itself.
     "target_policy": False,
-    "target_coeff": 0.9,
+    "target_coeff": HYPER_PARAMS["target_params_coeff"],
     "target_kl_cost": 0.1,
     # Advantages normalised by a lifetime EMA of their scale, not per batch.
     "adv_ema": False,
-    "adv_ema_decay": 0.99,
+    "adv_ema_decay": MOVING_AVERAGE_DECAY,
     # Critic learns returns normalised by a debiased EMA of the value targets.
     "value_norm": False,
-    "value_norm_decay": 0.99,
+    "value_norm_decay": MOVING_AVERAGE_DECAY,
     # Per-episode draw of these env settings, each from its list of choices.
     "env_variety": False,
     "env_variety_keys": ["matching_rule", "step_clearing", "maker_fee_bps", "taker_fee_bps"],
@@ -50,7 +55,11 @@ DEFAULTS: Dict[str, Any] = {
     },
     # Auxiliary head predicting the next step's policy. Experimental.
     "policy_prediction": False,
-    "policy_prediction_cost": 1.0,
+    "policy_prediction_cost": HYPER_PARAMS["aux_policy_cost"],
+    # The frozen Disco103 rule in place of PPO's loss on the discrete actions.
+    # Rewards are scaled up first: the rule was discovered on Atari-scale ones.
+    "disco103": False,
+    "disco103_reward_scale": 100.0,
 }
 
 #: The on/off switches, one per component.
@@ -60,18 +69,23 @@ COMPONENTS = (
     "value_norm",
     "env_variety",
     "policy_prediction",
+    "disco103",
 )
 
 #: Components whose code has landed. A switch for any other one is refused
 #: rather than accepted and ignored, which would read as "it made no difference".
 BUILT: frozenset = frozenset(COMPONENTS)
 
+#: Components Disco103 supplies itself (its targets include a policy target and
+#: a policy prediction), or that would change the critic it keeps for `size`.
+DISCO103_EXCLUDES = ("target_policy", "policy_prediction", "value_norm")
+
 #: Components whose state lives on one Learner. With several Learners each would
 #: keep its own copy, fitted to its own shard of the batch.
-PER_LEARNER_STATE = ("target_policy", "adv_ema", "value_norm")
+PER_LEARNER_STATE = ("target_policy", "adv_ema", "value_norm", "disco103")
 
 #: Settings that add a tensor to the module; changing one on a resume fails as structural.
-STRUCTURAL_KEYS = ("value_norm", "policy_prediction")
+STRUCTURAL_KEYS = ("value_norm", "policy_prediction", "disco103")
 
 
 def _fail(message: str) -> None:
@@ -81,6 +95,11 @@ def _fail(message: str) -> None:
 def _in_unit_interval(settings, key: str) -> None:
     if not 0.0 <= settings[key] < 1.0:
         _fail(f"{key} must be in [0, 1), got {settings[key]!r}.")
+
+
+def _positive(settings, key: str) -> None:
+    if not settings[key] > 0:
+        _fail(f"{key} must be positive, got {settings[key]!r}.")
 
 
 def _non_negative(settings, key: str) -> None:
@@ -105,6 +124,10 @@ def validate(settings: Dict[str, Any], cfg) -> None:
     if unbuilt:
         _fail(f"{unbuilt} are not built yet in this version of cda-discorl.")
 
+    if settings["disco103"]:
+        overlap = [n for n in DISCO103_EXCLUDES if settings[n]]
+        if overlap:
+            _fail(f"disco103 cannot be combined with {overlap}; turn them off.")
     per_learner = [n for n in PER_LEARNER_STATE if settings[n]]
     if per_learner and cfg.num_learners > 1:
         _fail(f"{per_learner} keep per-Learner state and need num_learners <= 1.")
@@ -114,9 +137,11 @@ def validate(settings: Dict[str, Any], cfg) -> None:
     _in_unit_interval(settings, "adv_ema_decay")
     _in_unit_interval(settings, "value_norm_decay")
     _non_negative(settings, "policy_prediction_cost")
+    _positive(settings, "disco103_reward_scale")
 
-    if settings["policy_prediction"] and cfg.encoder_type == "lstm":
-        _fail("policy_prediction needs a stateless encoder; encoder_type is lstm.")
+    for name in ("policy_prediction", "disco103"):
+        if settings[name] and cfg.encoder_type == "lstm":
+            _fail(f"{name} needs a stateless encoder; encoder_type is lstm.")
 
     env_keys = settings["env_variety_keys"]
     missing = sorted(set(env_keys) - set(cfg.env_config))

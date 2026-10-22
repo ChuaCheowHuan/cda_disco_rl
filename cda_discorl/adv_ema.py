@@ -3,8 +3,9 @@
 RLlib's GAE connector standardises each batch's advantages by that batch's own
 mean and standard deviation. DiscoRL instead keeps an exponential moving
 average of the advantage's first and second moments over the agent's whole
-lifetime, debiased as Adam debiases its moments, and normalises with those
-(google-deepmind/disco_rl, `disco_rl/utils.py`, `MovingAverage`). A batch of unusually large or small
+lifetime, debiased as Adam debiases its moments, and normalises with those.
+The moments and the normalisation are `disco_rl.utils.MovingAverage`'s,
+imported through `upstream.EmaMoments`. A batch of unusually large or small
 advantages then keeps its scale relative to the past, instead of being
 stretched to unit variance.
 
@@ -16,7 +17,7 @@ are part of the Learner's state, so they survive a checkpoint.
 
 from __future__ import annotations
 
-from typing import Dict, Iterable
+from typing import Iterable
 
 import torch
 from ray.rllib.connectors.connector_v2 import ConnectorV2
@@ -26,48 +27,12 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 
 from gym_continuousDoubleAuction.train.extensions import settings_for
 
+from cda_discorl.upstream import EmaMoments
+
 NAME = "discorl"
 
 #: Key in the Learner's state holding the per-module moments.
 STATE_KEY = "discorl_adv_ema"
-
-#: DiscoRL's normalisation epsilons (`MovingAverage.normalize`).
-EPS = 1e-6
-ROOT_EPS = 1e-12
-
-
-class EmaMoments:
-    """One stream's debiased EMA of the first and second moment."""
-
-    def __init__(self, decay: float):
-        self.decay = decay
-        self.moment1 = 0.0
-        self.moment2 = 0.0
-        self.decay_product = 1.0
-
-    def update(self, values: torch.Tensor) -> None:
-        d = self.decay
-        self.moment1 = d * self.moment1 + (1.0 - d) * float(values.mean())
-        self.moment2 = d * self.moment2 + (1.0 - d) * float((values**2).mean())
-        self.decay_product *= d
-
-    def normalize(self, values: torch.Tensor) -> torch.Tensor:
-        debias = 1.0 / (1.0 - self.decay_product)
-        mean = self.moment1 * debias
-        var = max(0.0, self.moment2 * debias - mean**2)
-        return (values - mean) / ((var + ROOT_EPS) ** 0.5 + EPS)
-
-    def get_state(self) -> Dict[str, float]:
-        return {
-            "moment1": self.moment1,
-            "moment2": self.moment2,
-            "decay_product": self.decay_product,
-        }
-
-    def set_state(self, state: Dict[str, float]) -> None:
-        self.moment1 = state["moment1"]
-        self.moment2 = state["moment2"]
-        self.decay_product = state["decay_product"]
 
 
 class EmaAdvantages(ConnectorV2):

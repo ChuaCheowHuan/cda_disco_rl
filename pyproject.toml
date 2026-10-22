@@ -4,15 +4,30 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cda-discorl"
-version = "0.1.0"
+version = "0.2.0"
 description = "DiscoRL components for gym-continuousDoubleAuction, as an installable training extension."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
-license-files = ["LICENSE", "NOTICE"]
+license-files = ["LICENSE", "NOTICE", "third_party/disco_rl/LICENSE"]
 # gym-CDA is not on PyPI: install it first (see README). The range is the
 # extension-point contract this package is tested against.
-dependencies = ["gym_continuousDoubleAuction>=2.0,<3"]
+# disco_rl is not on PyPI either. It is the git submodule third_party/disco_rl,
+# the ChuaCheowHuan/disco_rl fork pinned and shipped unchanged (see
+# [tool.setuptools] below), so its dependencies are listed here: the ones the
+# shipped packages import, leaving out the plotting ones its colabs use.
+# This package imports what disco_rl provides rather than reimplementing it.
+dependencies = [
+    "gym_continuousDoubleAuction>=2.0,<3",
+    "jax",
+    "distrax",
+    "optax",
+    "jmp",
+    "rlax",
+    "dm-haiku",
+    "immutabledict",
+    "ml_collections",
+]
 
 [project.optional-dependencies]
 test = ["pytest"]
@@ -20,11 +35,31 @@ test = ["pytest"]
 [project.entry-points."gym_cda.extensions"]
 discorl = "cda_discorl:EXTENSION"
 
+# `disco_rl` is DeepMind's code, a git submodule shipped unchanged as a top-level
+# package; the fork itself is never edited. Its own packaging leaves out the
+# Disco103 weights, so they are mapped here as package data.
 [tool.setuptools]
-packages = ["cda_discorl"]
+packages = [
+    "cda_discorl",
+    "cda_discorl.disco103",
+    "disco_rl",
+    "disco_rl.environments",
+    "disco_rl.environments.wrappers",
+    "disco_rl.networks",
+    "disco_rl.update_rules",
+    "disco_rl.value_fns",
+]
+
+[tool.setuptools.package-dir]
+disco_rl = "third_party/disco_rl/disco_rl"
+
+[tool.setuptools.package-data]
+"disco_rl.update_rules" = ["weights/*.npz"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+# DeepMind's code, shipped unchanged; never reformat it.
+extend-exclude = ["third_party"]

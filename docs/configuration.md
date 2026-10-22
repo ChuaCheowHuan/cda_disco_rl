@@ -36,6 +36,8 @@ With gym-CDA's command-line tools, pass the same values with `--set`:
 | `env_variety_choices` | See §3 | A non-empty list per key | The values each key is drawn from |
 | `policy_prediction` | `false` | bool | Auxiliary head predicting the next step's policy (experimental) |
 | `policy_prediction_cost` | `1.0` | ≥ 0 | Weight of the prediction loss |
+| `disco103` | `false` | bool | The frozen Disco103 rule replaces PPO's loss on the discrete actions (experimental) |
+| `disco103_reward_scale` | `100.0` | > 0 | Factor on the rewards the rule sees |
 
 ## 2. Rules checked when the config is built
 
@@ -43,17 +45,20 @@ With gym-CDA's command-line tools, pass the same values with `--set`:
 
 - `modules` names a module that is not trainable (`policy_0` to `policy_{num_trained_agents-1}`).
 - A switch is not `true` or `false`.
-- `target_policy`, `adv_ema` or `value_norm` is on with `num_learners > 1`, because their state
-  lives on one Learner.
+- `target_policy`, `adv_ema`, `value_norm` or `disco103` is on with `num_learners > 1`, because
+  their state lives on one Learner.
+- `disco103` is on with `target_policy`, `policy_prediction` or `value_norm`.
 - A decay or `target_coeff` is outside [0, 1), or a cost is negative.
-- `policy_prediction` is on with `encoder_type: lstm`, because it needs a stateless encoder.
+- `policy_prediction` or `disco103` is on with `encoder_type: lstm`, because each needs a
+  stateless encoder.
+- `disco103_reward_scale` is not positive.
 - `env_variety_keys` names a key the env config lacks, or one outside the four supported keys.
 - An `env_variety_choices` list is empty, holds a matching rule or clearing mode the env does not
   know, or can draw a maker and taker fee pair the env's fee rules reject.
 
 On a resume, gym-CDA also refuses any setting that differs from the checkpoint's. Changing
-`value_norm` or `policy_prediction` is refused as structural, because each adds tensors to the
-module.
+`value_norm`, `policy_prediction` or `disco103` is refused as structural, because each adds
+tensors to the module.
 
 ## 3. Env variety choices
 
