@@ -47,6 +47,11 @@ def _head(in_features: int, out_features: int, std: float) -> nn.Linear:
 class Disco103Module:
     """Module mixin: Disco103's heads per discrete component, on the train pass."""
 
+    #: `disco_heads` reads the actor embedding, the output of whichever trunk feeds
+    #: `pi`, so Continual Backprop resets its input weights with that trunk's
+    #: units (gym-CDA `layout.trunk_outputs`).
+    extra_trunk_heads = {"encoder": ("disco_heads",), "actor_encoder": ("disco_heads",)}
+
     _d103_on = False
 
     def setup(self):
