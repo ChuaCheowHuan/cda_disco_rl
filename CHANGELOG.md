@@ -18,6 +18,12 @@
   `policy_prediction_cost`, `adv_ema_decay` and `value_norm_decay` are read from `disco_rl`
   (same values as before). `MovingAverage` computes in float32, where the old code used float64.
   Checkpoints from 0.1.0 load unchanged: the moments are stored as the same three numbers.
+- **Changed:** needs gym-CDA 2.1 (`gym_continuousDoubleAuction>=2.1,<3`). 2.1.0 lists extensions
+  without importing them, so a run that does not enable `discorl` no longer imports this package
+  or JAX (#4, #6).
+- **Changed:** `PolicyPredictionModule` and `Disco103Module` declare their heads (`aux_pi`,
+  `disco_heads`) in gym-CDA's `extra_trunk_heads`, as heads of the trunk `pi` reads, so Continual
+  Backprop (cda-cbp) resets their input weights with a unit it replaces (#5).
 
 ## 0.1.0 (unreleased)
 
