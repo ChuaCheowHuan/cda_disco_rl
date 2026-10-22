@@ -118,6 +118,18 @@ class TestInARealRun:
         assert hasattr(self.learner.module["policy_0"].unwrapped(), "aux_pi")
         assert not hasattr(self.learner.module["policy_1"].unwrapped(), "aux_pi")
 
+    def test_the_head_is_declared_on_the_trunk_it_reads(self):
+        # Continual Backprop resets the input weights of the heads `trunk_outputs`
+        # reports, so a head it did not see would read a replaced unit with the
+        # old unit's weights (cda_disco_rl#5).
+        from gym_continuousDoubleAuction.train.model.layout import trunk_outputs
+
+        module = self.learner.module["policy_0"].unwrapped()
+        reads_pi = [t for t in trunk_outputs(module) if module.pi in t.heads]
+        assert reads_pi and all(t.extra_heads == [module.aux_pi] for t in reads_pi)
+        others = [t for t in trunk_outputs(module) if module.pi not in t.heads]
+        assert all(t.extra_heads == [] for t in others)
+
     def test_the_loss_is_logged_finite_for_the_selected_module_only(self):
         value = float(self.result["learners"]["policy_0"][pp.POLICY_PREDICTION_LOSS_KEY])
         assert np.isfinite(value) and value >= 0

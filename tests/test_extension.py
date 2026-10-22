@@ -176,3 +176,29 @@ class TestResume:
         assert set(extensions.structural_keys(group)) == {
             f"ext.discorl.{k}" for k in config.STRUCTURAL_KEYS
         }
+
+
+class TestInstalledButNotEnabled:
+    """Installing this package costs a run that does not enable it nothing (#4).
+
+    The package imports JAX and `disco_rl` (its defaults come from there), so
+    gym-CDA must not import it until a run enables `discorl`: gym-CDA 2.1 lists
+    entry points without loading them (gym-continuousDoubleAuction#337).
+    """
+
+    def test_a_default_train_config_imports_neither_jax_nor_this_package(self):
+        import subprocess
+        import sys
+
+        code = (
+            "import sys\n"
+            "from gym_continuousDoubleAuction.train.train import TrainConfig\n"
+            "from gym_continuousDoubleAuction.train import extensions\n"
+            "assert 'discorl' in extensions.available()\n"
+            "TrainConfig(episode_data_dir=None, log_level='ERROR')\n"
+            "print(sorted(m for m in ('jax', 'disco_rl', 'cda_discorl') if m in sys.modules))\n"
+        )
+        out = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True, check=True
+        )
+        assert out.stdout.strip().splitlines()[-1] == "[]"

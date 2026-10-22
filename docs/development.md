@@ -50,8 +50,9 @@ ChuaCheowHuan/gym-continuousDoubleAuction#314 merged. A manual run can test anot
 
 ## 4. Compatibility with gym-CDA
 
-The package depends on `gym_continuousDoubleAuction>=2.0,<3`. Version 2.0.0 itself predates the
-extension point, so the lower bound should rise to the first gym-CDA release that carries it.
+The package depends on `gym_continuousDoubleAuction>=2.1,<3`. Version 2.1.0 is the first that
+lists extensions without importing them, so a run that does not enable `discorl` never imports this
+package or JAX, and the first that reads `extra_trunk_heads`.
 
 What the package relies on in gym-CDA:
 
@@ -60,6 +61,8 @@ What the package relies on in gym-CDA:
 - `POLICY_PREFIX` from `train/policy/policy_handler.py`
 - `_collect` from `train/model/moe_learner.py`, which `policy_prediction` uses to discard the MoE
   routing statistics of its extra forward pass
+- `extra_trunk_heads`, read by `train/model/layout.py`, which declares `aux_pi` and `disco_heads`
+  as heads of the trunk `pi` reads
 
 What the package imports from `disco_rl` is listed in [architecture.md](architecture.md) §5.
 `disco_rl` is the git submodule `third_party/disco_rl` (the ChuaCheowHuan/disco_rl fork, pinned

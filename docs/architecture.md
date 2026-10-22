@@ -45,8 +45,14 @@ comes first so that every later loss term sees the normalised value targets. `Di
 replaces PPO's loss when it is on rather than calling `super()`, which is why `validate` refuses
 it with `value_norm`, `target_policy` and `policy_prediction`.
 
-gym-CDA places the Learner mixin after the encoder's Learner and before Continual Backprop. So the
-MoE and JEPA loss terms are kept, and CBP still wraps the result.
+gym-CDA composes the Learner mixin over the encoder's Learner and tuned Adam. So the MoE and JEPA
+loss terms are kept, and Continual Backprop (the cda-cbp extension, `learner_order=100`) still
+wraps the result.
+
+`PolicyPredictionModule` and `Disco103Module` add heads that read the actor embedding, the output
+of the trunk `pi` reads. Each declares them in `extra_trunk_heads`, so gym-CDA's
+`layout.trunk_outputs` reports them and Continual Backprop resets their input weights with the
+unit it replaces; an undeclared head would read the new unit with the old unit's weights.
 
 `module_ids` returns no modules unless `value_norm`, `policy_prediction` or `disco103` is on. A run that uses
 only Learner-side components therefore leaves every module class exactly as gym-CDA builds it.

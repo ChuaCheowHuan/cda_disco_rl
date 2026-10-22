@@ -92,6 +92,11 @@ def per_head_kl(target: torch.Tensor, pred: torch.Tensor, widths: List[int]) -> 
 class PolicyPredictionModule:
     """Module mixin: the `aux_pi` head, on the train pass only."""
 
+    #: `aux_pi` reads the actor embedding, the output of whichever trunk feeds
+    #: `pi`, so Continual Backprop resets its input weights with that trunk's
+    #: units (gym-CDA `layout.trunk_outputs`).
+    extra_trunk_heads = {"encoder": ("aux_pi",), "actor_encoder": ("aux_pi",)}
+
     _pp_on = False
 
     def setup(self):
