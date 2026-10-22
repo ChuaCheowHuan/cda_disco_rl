@@ -27,6 +27,8 @@ from ray.rllib.core.columns import Columns
 
 from gym_continuousDoubleAuction.train.extensions import settings_for
 
+from cda_discorl.upstream import ema_update_
+
 NAME = "discorl"
 
 #: Key in the Learner's state holding each target module's weights.
@@ -81,12 +83,8 @@ class TargetPolicyLearner:
         super().apply_gradients(gradients_dict)
         if not self._targets:
             return
-        c = self._target_coeff
-        with torch.no_grad():
-            for module_id, target in self._targets.items():
-                online = self.module[module_id].unwrapped()
-                for t, p in zip(target.parameters(), online.parameters()):
-                    t.mul_(c).add_(p.detach(), alpha=1.0 - c)
+        for module_id, target in self._targets.items():
+            ema_update_(target, self.module[module_id].unwrapped(), self._target_coeff)
 
     def get_state(self, components=None, *, not_components=None, **kwargs):
         state = super().get_state(components, not_components=not_components, **kwargs)

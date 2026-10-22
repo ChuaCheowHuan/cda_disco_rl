@@ -5,11 +5,12 @@ This market's value targets are tiny. Their standard deviation is about 0.004 in
 whose loss assumes a fixed scale, as DiscoRL's categorical critic and Disco103
 do, is badly placed to see a signal that small; neither learned here. DiscoRL
 itself never relies on raw scale; it normalises TD errors and advantages by
-running moments (google-deepmind/disco_rl, `disco_rl/value_fns`).
+running moments (`disco_rl/value_fns`), with `disco_rl.utils.MovingAverage`.
 
 With `value_norm` on, the value head predicts the *normalised* return,
 `(G - mean) / std`, where mean and std come from a debiased EMA of the value
-targets, the same `EmaMoments` the advantage EMA uses. The critic loss sees
+targets: `disco_rl`'s MovingAverage, through the same `upstream.EmaMoments`
+the advantage EMA uses. The critic loss sees
 normalised targets against that prediction. `compute_values` maps it back,
 `mean + std * prediction`, so GAE, the advantages and every value RLlib reads
 stay in reward units.
@@ -33,13 +34,17 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 
 from gym_continuousDoubleAuction.train.extensions import settings_for
 
-from cda_discorl.adv_ema import EPS, ROOT_EPS, EmaAdvantages
+from cda_discorl.adv_ema import EmaAdvantages
+from cda_discorl.upstream import EmaMoments
 
 NAME = "discorl"
 
 #: Metrics logged per module: the moments in force for the update.
 MEAN_KEY = "discorl_value_norm_mean"
 STD_KEY = "discorl_value_norm_std"
+
+#: EmaMoments' state, one float64 buffer each.
+_MOMENTS = ("moment1", "moment2", "decay_product")
 
 
 class ValueNormModule:
@@ -60,34 +65,34 @@ class ValueNormModule:
             return
         self._vn_on = True
         self._vn_decay = float(s["value_norm_decay"])
-        # Moments of the value targets, as EmaMoments keeps them.
-        for name, start in (("moment1", 0.0), ("moment2", 0.0), ("decay_product", 1.0)):
+        # Moments of the value targets, as EmaMoments keeps them, as buffers so
+        # they travel with the weights.
+        for name, start in zip(_MOMENTS, (0.0, 0.0, 1.0)):
             self.register_buffer(f"_vn_{name}", torch.tensor(start, dtype=torch.float64))
+
+    def _vn_moments(self) -> EmaMoments:
+        m = EmaMoments(self._vn_decay)
+        m.set_state({n: float(getattr(self, f"_vn_{n}")) for n in _MOMENTS})
+        return m
 
     def value_norm_stats(self):
         """`(mean, std)` of the value targets so far; `(0, 1)` before any update."""
-        if float(self._vn_decay_product) == 1.0:
-            return 0.0, 1.0
-        debias = 1.0 / (1.0 - float(self._vn_decay_product))
-        mean = float(self._vn_moment1) * debias
-        var = max(0.0, float(self._vn_moment2) * debias - mean**2)
-        return mean, (var + ROOT_EPS) ** 0.5 + EPS
+        m = self._vn_moments()
+        return m.mean_std() if m.updated else (0.0, 1.0)
 
     def update_value_norm(self, targets: torch.Tensor) -> None:
-        d = self._vn_decay
-        t = targets.detach().to(torch.float64)
-        self._vn_moment1.mul_(d).add_((1.0 - d) * t.mean())
-        self._vn_moment2.mul_(d).add_((1.0 - d) * (t**2).mean())
-        self._vn_decay_product.mul_(d)
+        m = self._vn_moments()
+        m.update(targets)
+        for name, value in m.get_state().items():
+            getattr(self, f"_vn_{name}").fill_(value)
 
     def set_state(self, state) -> None:
-        # RLlib's set_state casts float64 arrays to float32, and the std is a
-        # difference of two moments, so that rounding would grow ~100-fold.
-        # Restore the moments at full precision after the rest of the state.
+        # RLlib's set_state casts float64 arrays to float32. Restore the moments
+        # exactly as saved, so a resumed run continues from the same numbers.
         super().set_state(state)
         if not self._vn_on:
             return
-        for name in ("moment1", "moment2", "decay_product"):
+        for name in _MOMENTS:
             key = f"_vn_{name}"
             if key in state:
                 value = torch.as_tensor(np.asarray(state[key]), dtype=torch.float64)

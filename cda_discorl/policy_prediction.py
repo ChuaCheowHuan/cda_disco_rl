@@ -74,12 +74,18 @@ def gather_discrete(logits: torch.Tensor, slices) -> torch.Tensor:
     return torch.cat([logits[..., s] for _, s in slices], dim=-1)
 
 
+def categorical_kl(target: torch.Tensor, pred: torch.Tensor) -> torch.Tensor:
+    """KL(softmax(target) || softmax(pred)) over the last axis, as
+    `rlax.categorical_kl_divergence`; in torch, because gradients flow into `pred`."""
+    log_t = torch.log_softmax(target, -1)
+    return (log_t.exp() * (log_t - torch.log_softmax(pred, -1))).sum(-1)
+
+
 def per_head_kl(target: torch.Tensor, pred: torch.Tensor, widths: List[int]) -> torch.Tensor:
     """Sum over components of KL(softmax(target) || softmax(pred)), per row."""
     total = 0.0
     for t, p in zip(torch.split(target, widths, -1), torch.split(pred, widths, -1)):
-        log_t = torch.log_softmax(t, -1)
-        total = total + (log_t.exp() * (log_t - torch.log_softmax(p, -1))).sum(-1)
+        total = total + categorical_kl(t, p)
     return total
 
 

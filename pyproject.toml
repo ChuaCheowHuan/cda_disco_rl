@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cda-discorl"
-version = "0.1.0"
+version = "0.2.0"
 description = "DiscoRL components for gym-continuousDoubleAuction, as an installable training extension."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -12,7 +12,13 @@ license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 # gym-CDA is not on PyPI: install it first (see README). The range is the
 # extension-point contract this package is tested against.
-dependencies = ["gym_continuousDoubleAuction>=2.0,<3"]
+# disco_rl is not on PyPI either: it is installed from the fork, which ships the
+# Disco103 weights. This package imports what disco_rl provides rather than
+# reimplementing it, so it brings JAX, Haiku and rlax with it.
+dependencies = [
+    "gym_continuousDoubleAuction>=2.0,<3",
+    "disco_rl @ git+https://github.com/ChuaCheowHuan/disco_rl",
+]
 
 [project.optional-dependencies]
 test = ["pytest"]
@@ -21,7 +27,7 @@ test = ["pytest"]
 discorl = "cda_discorl:EXTENSION"
 
 [tool.setuptools]
-packages = ["cda_discorl"]
+packages = ["cda_discorl", "cda_discorl.disco103"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

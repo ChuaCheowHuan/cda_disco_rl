@@ -12,7 +12,7 @@ from gym_continuousDoubleAuction.train.extensions import Extension
 
 from cda_discorl import components, config, env_variety
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 EXTENSION = Extension(
     name="discorl",
