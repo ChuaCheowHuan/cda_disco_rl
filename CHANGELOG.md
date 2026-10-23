@@ -2,6 +2,11 @@
 
 ## 0.2.0 (unreleased)
 
+- **Docs:** each component's description moved from the README into `docs/components.md`, with
+  the metrics table that was in gym-CDA's docs/30; the README keeps the summary table and gains a
+  diagram of the fork, this package and gym-CDA. The README's market-variety section and test
+  section went: the first is `docs/configuration.md` §3, the second `docs/development.md`.
+
 - **Added:** `disco103`, the frozen Disco103 rule in place of PPO's loss on the discrete action
   components (experimental), and `disco103_reward_scale`. It imports the rule, its settings and
   its weights from `disco_rl`; none of them are copied here.
