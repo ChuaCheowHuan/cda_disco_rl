@@ -45,8 +45,7 @@ runs on pushes to `main` and on pull requests: it installs CPU PyTorch, gym-CDA 
 `GYM_CDA_REF` and this package, then runs the tests. Its checkout needs `submodules: true`, or
 the build finds no `disco_rl`.
 
-`GYM_CDA_REF` defaults to gym-CDA's `master`, which is at version 2.1.0 or later since
-ChuaCheowHuan/gym-continuousDoubleAuction#340 merged. A manual run can test another ref with the
+`GYM_CDA_REF` defaults to gym-CDA's `master`. A manual run can test another ref with the
 `gym_cda_ref` input.
 
 ## 4. Compatibility with gym-CDA
@@ -88,7 +87,7 @@ gym-CDA's own tests of the contract are `test_extensions.py` and
 4. Add its mixins to `DiscoLearnerMixin` and `DiscoModuleMixin` in `components.py`.
 5. Add a test file, and check that `test_real_run.py` still passes with every component on
    (`disco103` aside).
-6. Document it in the README, [configuration.md](configuration.md),
+6. Document it in the README, [components.md](components.md), [configuration.md](configuration.md),
    [architecture.md](architecture.md) and the [changelog](../CHANGELOG.md).
 
 ## 6. Releasing

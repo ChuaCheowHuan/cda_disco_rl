@@ -70,24 +70,8 @@ it, rather than `compute_loss_for_module`, keeps the MoE and JEPA terms.
 | `policy_prediction` | `build` adds next observations to the batch if the run lacks them; `_policy_value_loss` adds the prediction KL | `setup` adds the `aux_pi` head (Learner copy only); `_forward_train` fills it | `AddNextObservationsFromEpisodesToTrainBatch`, when missing | The head's weights, with the module |
 | `disco103` | `build` creates the `Bridge`, an EMA target copy per module and a meta-state per action component; `_policy_value_loss` replaces PPO's loss; `apply_gradients` moves the target copy | `setup` adds `y`, `z`, `aux_pi` and `q` heads per discrete component (Learner copy only); `_forward_train` fills them | `Disco103Targets`, after `GeneralAdvantageEstimation` | Target weights and meta-states, in the Learner state under `discorl_disco103` |
 
-### Advantage EMA
-
-RLlib's GAE connector writes standardised advantages, and the raw values are gone by the time it
-finishes. `EmaAdvantages` therefore recomputes them as `value_targets - V(s)` with the same
-weights. It then folds the batch into a debiased EMA of the first and second moments and
-normalises with that. Both steps are `disco_rl.utils.MovingAverage`'s `update_state` and
-`normalize`, through `upstream.EmaMoments`, which keeps the state as three plain floats.
-
-### Value normalisation
-
-`ValueNormMoments` updates the module's moments from the masked `VALUE_TARGETS` right after GAE,
-or right after `EmaAdvantages` when `adv_ema` is on too. That order matters: `EmaAdvantages`
-recomputes `V(s)` through `compute_values`, and it must use the stats GAE bootstrapped with, not
-ones already updated from this batch.
-In the loss, `ValueNormLearner` replaces the targets with `(T - mean) / std` and sets the
-module's `_vn_raw` flag around the `super()` call, so PPO's critic loss compares normalised
-targets with the head's normalised output. Everywhere else, `compute_values` returns
-`mean + std * head`, so GAE and RLlib's metrics keep reward units.
+What each component computes, and why `adv_ema` and `value_norm` run in the order they do, is
+[components.md](components.md).
 
 ### No env wrapper
 
