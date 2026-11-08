@@ -1,20 +1,13 @@
-"""The value normalisation component, piece by piece and inside a real run."""
+"""The value normalisation component, piece by piece. Its real run, alone and after the
+advantage EMA, is in `test_real_run.py`."""
 
-import shutil
-import tempfile
-
-import numpy as np
 import pytest
-import ray
 import torch
 from torch import nn
 from ray.rllib.core.columns import Columns
 from ray.rllib.evaluation.postprocessing import Postprocessing
 
-from gym_continuousDoubleAuction.train import extensions
-from gym_continuousDoubleAuction.train.train import TrainConfig, build_config
-
-from cda_discorl import adv_ema, config, upstream
+from cda_discorl import config, upstream
 from cda_discorl import value_norm as vn
 
 
@@ -154,127 +147,3 @@ class TestConnector:
         )
         assert float(m0._vn_moment1) == pytest.approx(0.1 * 2.0)
         assert m1.value_norm_stats() == (0.0, 1.0)
-
-
-class TestValidation:
-    def test_the_decay_must_be_below_one(self):
-        cfg = TrainConfig(num_agents=4, num_trained_agents=2, episode_data_dir=None)
-        with pytest.raises(ValueError, match="value_norm_decay"):
-            config.validate({**config.DEFAULTS, "value_norm_decay": 1.0}, cfg)
-
-
-TEST_CFG = dict(
-    num_agents=4,
-    num_trained_agents=2,
-    max_step=64,
-    num_episodes_per_iter=2,
-    num_epochs=1,
-    minibatch_size=64,
-    num_env_runners=0,
-    num_learners=0,
-    num_gpus_per_learner=0,
-    episode_data_dir=None,
-    log_level="ERROR",
-    seed=7,
-    extensions_enabled=["discorl"],
-    extension_settings={"discorl": {"value_norm": True, "value_norm_decay": 0.9}},
-)
-
-
-class TestInARealRun:
-    """policy_0's critic learns normalised returns; policy_1 stays plain PPO."""
-
-    @classmethod
-    def setup_class(cls):
-        extensions.discover.cache_clear()
-        ray.init(ignore_reinit_error=True, include_dashboard=False, log_to_driver=False, num_cpus=2)
-        cls.log_dir = tempfile.mkdtemp()
-        cls.cfg = TrainConfig(**TEST_CFG, log_base_dir=cls.log_dir)
-        ppo_config, _cb = build_config(cls.cfg)
-        cls.algo = ppo_config.build_algo()
-        cls.result = cls.algo.train()
-        cls.learner = cls.algo.learner_group._learner
-
-    @classmethod
-    def teardown_class(cls):
-        cls.algo.stop()
-        ray.shutdown()
-        shutil.rmtree(cls.log_dir, ignore_errors=True)
-
-    def test_the_moments_moved_once(self):
-        module = self.learner.module["policy_0"].unwrapped()
-        assert float(module._vn_decay_product) == pytest.approx(0.9)
-        assert np.isfinite(float(self.result["learners"]["policy_0"][vn.STD_KEY]))
-
-    def test_the_other_module_has_none(self):
-        assert not getattr(self.learner.module["policy_1"].unwrapped(), "_vn_on", False)
-        assert vn.STD_KEY not in self.result["learners"]["policy_1"]
-
-    def test_the_checkpoint_restores_the_moments(self):
-        from ray.rllib.algorithms.algorithm import Algorithm
-
-        from gym_continuousDoubleAuction.train.checkpoint import save_checkpoint
-
-        path = save_checkpoint(self.algo, self.cfg, 1)
-        restored = Algorithm.from_checkpoint(path)
-        try:
-            got = restored.learner_group._learner.module["policy_0"].unwrapped()
-            want = self.learner.module["policy_0"].unwrapped()
-            # Exact: the moments are restored as float64, not RLlib's float32.
-            assert got._vn_moment2.dtype == torch.float64
-            assert got.value_norm_stats() == pytest.approx(want.value_norm_stats(), rel=1e-12)
-        finally:
-            restored.stop()
-
-
-class TestWithAdvEma:
-    """With adv_ema on too, the advantage EMA recomputes V(s) with the stats GAE used.
-
-    The value-norm moments must move only after `EmaAdvantages` has run;
-    otherwise its baseline is V(s) under the new stats while the value targets
-    were bootstrapped under the old ones.
-    """
-
-    @classmethod
-    def setup_class(cls):
-        extensions.discover.cache_clear()
-        ray.init(ignore_reinit_error=True, include_dashboard=False, log_to_driver=False, num_cpus=2)
-        cls.log_dir = tempfile.mkdtemp()
-        settings = {"value_norm": True, "value_norm_decay": 0.9, "adv_ema": True}
-        cfg = {**TEST_CFG, "extension_settings": {"discorl": settings}}
-        cls.cfg = TrainConfig(**cfg, log_base_dir=cls.log_dir)
-        ppo_config, _cb = build_config(cls.cfg)
-        cls.algo = ppo_config.build_algo()
-        cls.learner = cls.algo.learner_group._learner
-        cls.module = cls.learner.module["policy_0"].unwrapped()
-
-        cls.seen = []
-        original = adv_ema.EmaAdvantages.__call__
-
-        def spy(self, **kwargs):
-            cls.seen.append(cls.module.value_norm_stats())
-            return original(self, **kwargs)
-
-        cls.before = []
-        adv_ema.EmaAdvantages.__call__ = spy
-        try:
-            for _ in range(2):
-                cls.before.append(cls.module.value_norm_stats())
-                cls.algo.train()
-        finally:
-            adv_ema.EmaAdvantages.__call__ = original
-
-    @classmethod
-    def teardown_class(cls):
-        cls.algo.stop()
-        ray.shutdown()
-        shutil.rmtree(cls.log_dir, ignore_errors=True)
-
-    def test_the_moments_update_after_the_advantage_ema(self):
-        names = [type(p).__name__ for p in self.learner._learner_connector.connectors]
-        gae = names.index("GeneralAdvantageEstimation")
-        assert names[gae + 1 : gae + 3] == ["EmaAdvantages", "ValueNormMoments"]
-
-    def test_the_advantage_ema_sees_the_stats_gae_used(self):
-        assert self.seen == self.before
-        assert self.before[1] != (0.0, 1.0), "the moments moved between the iterations"

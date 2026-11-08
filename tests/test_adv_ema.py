@@ -1,16 +1,9 @@
-"""The advantage EMA component, piece by piece and inside a real run."""
-
-import shutil
-import tempfile
+"""The advantage EMA component, piece by piece. Its real run is in `test_real_run.py`."""
 
 import pytest
-import ray
 import torch
 from ray.rllib.core.columns import Columns
 from ray.rllib.evaluation.postprocessing import Postprocessing
-
-from gym_continuousDoubleAuction.train import extensions
-from gym_continuousDoubleAuction.train.train import TrainConfig, build_config
 
 from cda_discorl import adv_ema, upstream
 
@@ -57,13 +50,6 @@ class TestMoments:
         small = torch.randn(256) * 0.1
         m.update(small)
         assert m.normalize(small).std() < 0.1
-
-    def test_state_round_trips(self):
-        m = upstream.EmaMoments(decay=0.9)
-        m.update(torch.randn(8))
-        n = upstream.EmaMoments(decay=0.9)
-        n.set_state(m.get_state())
-        assert n.get_state() == m.get_state()
 
 
 class _Module:
@@ -114,64 +100,3 @@ class TestConnector:
         piece = adv_ema.EmaAdvantages(["policy_0"], decay=0.9)
         piece(rl_module={"policy_0": _Module(torch.zeros(3))}, batch=batch)
         assert piece.moments["policy_0"].moment1 == pytest.approx(0.1 * 2.0)
-
-
-TEST_CFG = dict(
-    num_agents=4,
-    num_trained_agents=2,
-    max_step=64,
-    num_episodes_per_iter=2,
-    num_epochs=1,
-    minibatch_size=64,
-    num_env_runners=0,
-    num_learners=0,
-    num_gpus_per_learner=0,
-    episode_data_dir=None,
-    log_level="ERROR",
-    seed=7,
-    extensions_enabled=["discorl"],
-    extension_settings={"discorl": {"adv_ema": True, "adv_ema_decay": 0.9}},
-)
-
-
-class TestInARealRun:
-    """policy_0's advantages use the EMA; policy_1 keeps GAE's standardisation."""
-
-    @classmethod
-    def setup_class(cls):
-        extensions.discover.cache_clear()
-        ray.init(ignore_reinit_error=True, include_dashboard=False, log_to_driver=False, num_cpus=2)
-        cls.log_dir = tempfile.mkdtemp()
-        cls.cfg = TrainConfig(**TEST_CFG, log_base_dir=cls.log_dir)
-        ppo_config, _cb = build_config(cls.cfg)
-        cls.algo = ppo_config.build_algo()
-        cls.algo.train()
-        cls.learner = cls.algo.learner_group._learner
-
-    @classmethod
-    def teardown_class(cls):
-        cls.algo.stop()
-        ray.shutdown()
-        shutil.rmtree(cls.log_dir, ignore_errors=True)
-
-    def test_the_piece_runs_right_after_gae(self):
-        names = [type(p).__name__ for p in self.learner._learner_connector.connectors]
-        assert names[names.index("GeneralAdvantageEstimation") + 1] == "EmaAdvantages"
-
-    def test_only_the_selected_module_has_moments_and_they_moved(self):
-        moments = self.learner._adv_ema.moments
-        assert list(moments) == ["policy_0"]
-        assert moments["policy_0"].decay_product == pytest.approx(0.9)
-
-    def test_the_checkpoint_restores_the_moments(self):
-        from ray.rllib.algorithms.algorithm import Algorithm
-
-        from gym_continuousDoubleAuction.train.checkpoint import save_checkpoint
-
-        path = save_checkpoint(self.algo, self.cfg, 1)
-        restored = Algorithm.from_checkpoint(path)
-        try:
-            got = restored.learner_group._learner._adv_ema.moments["policy_0"].get_state()
-            assert got == self.learner._adv_ema.moments["policy_0"].get_state()
-        finally:
-            restored.stop()

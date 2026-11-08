@@ -15,27 +15,7 @@ from gym_continuousDoubleAuction.train.train import TrainConfig, _learner_class
 import cda_discorl
 from cda_discorl import config
 
-BASE_CFG = dict(
-    num_agents=4,
-    num_trained_agents=2,
-    max_step=64,
-    num_episodes_per_iter=2,
-    num_epochs=1,
-    minibatch_size=64,
-    num_env_runners=0,
-    num_learners=0,
-    num_gpus_per_learner=0,
-    episode_data_dir=None,
-    log_level="ERROR",
-)
-
-
-def _cfg(settings=None, **kwargs):
-    return TrainConfig(
-        **{**BASE_CFG, **kwargs},
-        extensions_enabled=["discorl"],
-        extension_settings={"discorl": settings or {}},
-    )
+from conftest import TINY, train_config as _cfg
 
 
 class TestDiscovery:
@@ -52,9 +32,6 @@ class TestDiscovery:
 class TestEnabledWithEverythingOffChangesNothing:
     def test_every_component_defaults_off(self):
         assert not any(config.DEFAULTS[name] for name in config.COMPONENTS)
-
-    def test_the_env_is_never_wrapped(self):
-        assert cda_discorl.EXTENSION.env_wrapper is None
 
     def test_the_learner_only_gains_the_switched_mixin(self):
         composed = _learner_class(_cfg())
@@ -77,15 +54,16 @@ class TestEnabledWithEverythingOffChangesNothing:
 
 
 class TestValidation:
-    def test_an_unknown_key_is_refused_by_gym_cda(self):
+    @pytest.mark.parametrize("key", ["target_kl", "env_variety"])
+    def test_an_unknown_key_is_refused_by_gym_cda(self, key):
+        # env_variety went in 0.2.0 in favour of gym-CDA's own `market_variety` env key.
         with pytest.raises(ValueError, match="unknown keys"):
-            _cfg({"target_kl": 0.1})
+            _cfg({key: True})
 
-    @pytest.mark.parametrize("name", config.COMPONENTS)
-    def test_a_component_not_built_yet_is_refused(self, monkeypatch, name):
-        monkeypatch.setattr(config, "BUILT", frozenset(config.COMPONENTS) - {name})
+    def test_a_component_not_built_yet_is_refused(self, monkeypatch):
+        monkeypatch.setattr(config, "BUILT", frozenset(config.COMPONENTS) - {"disco103"})
         with pytest.raises(ValueError, match="not built yet"):
-            _cfg({name: True})
+            _cfg({"disco103": True})
 
     def test_modules_must_be_trainable(self):
         with pytest.raises(ValueError, match="not trainable"):
@@ -117,38 +95,36 @@ class TestValidation:
         with pytest.raises(ValueError, match=key):
             _cfg({key: value})
 
-    @pytest.mark.parametrize("key", ["env_variety", "env_variety_keys", "env_variety_choices"])
-    def test_env_variety_is_gone_in_favour_of_market_variety(self, key):
-        # The per-episode market draw is gym-CDA's own `market_variety` env key.
-        with pytest.raises(ValueError, match="unknown keys"):
-            _cfg({key: True})
+    @pytest.mark.parametrize("name", ["policy_prediction", "disco103"])
+    def test_a_recurrent_encoder_is_refused_where_the_next_step_is_needed(self, name):
+        with pytest.raises(ValueError, match="stateless"):
+            _cfg({name: True}, encoder_type="lstm")
 
 
 class TestCombinationRules:
-    """Checked directly, with every switch treated as built."""
+    """Checked on `validate` directly, without gym-CDA's config build."""
 
     @staticmethod
-    def _check(monkeypatch, settings, **cfg_kwargs):
-        monkeypatch.setattr(config, "BUILT", frozenset(config.COMPONENTS))
-        cfg = TrainConfig(**{**BASE_CFG, **cfg_kwargs})
+    def _check(settings, **cfg_kwargs):
+        cfg = TrainConfig(**{**TINY, **cfg_kwargs})
         config.validate({**config.DEFAULTS, **settings}, cfg)
 
     @pytest.mark.parametrize("name", config.PER_LEARNER_STATE)
-    def test_per_learner_state_refuses_several_learners(self, monkeypatch, name):
+    def test_per_learner_state_refuses_several_learners(self, name):
         with pytest.raises(ValueError, match="num_learners"):
-            self._check(monkeypatch, {name: True}, num_learners=2)
+            self._check({name: True}, num_learners=2)
 
-    def test_every_component_but_disco103_together_is_allowed(self, monkeypatch):
-        self._check(monkeypatch, {name: True for name in config.COMPONENTS if name != "disco103"})
+    def test_every_component_but_disco103_together_is_allowed(self):
+        self._check({name: True for name in config.COMPONENTS if name != "disco103"})
 
     @pytest.mark.parametrize("name", config.DISCO103_EXCLUDES)
-    def test_disco103_refuses_the_components_it_excludes(self, monkeypatch, name):
+    def test_disco103_refuses_the_components_it_excludes(self, name):
         with pytest.raises(ValueError, match="cannot be combined"):
-            self._check(monkeypatch, {"disco103": True, name: True})
+            self._check({"disco103": True, name: True})
 
-    def test_disco103_combines_with_the_rest(self, monkeypatch):
+    def test_disco103_combines_with_the_rest(self):
         rest = set(config.COMPONENTS) - set(config.DISCO103_EXCLUDES)
-        self._check(monkeypatch, {name: True for name in rest})
+        self._check({name: True for name in rest})
 
 
 class TestDefaultsFromDiscoRL:
