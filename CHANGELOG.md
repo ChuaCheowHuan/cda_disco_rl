@@ -2,6 +2,12 @@
 
 ## 0.2.0 (unreleased)
 
+- **Tests:** the per-component real runs became one run with every component but `disco103`
+  together, sharing a Ray session and a `RealRun` base class (`tests/conftest.py`); redundant and
+  trivial tests went. 103 tests in about three minutes became 81 in a little over one.
+- **Added:** `CLAUDE.md` and the project skills `discorl-verify-finding` and
+  `discorl-bump-disco-rl`.
+
 - **Docs:** each component's description moved from the README into `docs/components.md`, with
   the metrics table that was in gym-CDA's docs/30; the README keeps the summary table and gains a
   diagram of the fork, this package and gym-CDA. The README's market-variety section and test

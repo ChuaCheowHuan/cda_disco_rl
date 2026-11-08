@@ -64,7 +64,7 @@ draws all three extension packages and their forks.
 | Advantage EMA | `adv_ema` | Normalises advantages by a lifetime EMA of their scale | Recommended |
 | Value normalisation | `value_norm` | Critic learns returns on a unit scale | Best critic in testing; return within noise of PPO |
 | Policy prediction | `policy_prediction` | Auxiliary head predicting the next step's policy | Experimental |
-| Disco103 | `disco103` | The frozen discovered rule replaces PPO's loss on the discrete actions | Experimental; did not beat PPO at about 260k steps |
+| Disco103 | `disco103` | The frozen discovered rule replaces PPO's loss on the discrete actions | Experimental; did not beat PPO in a 30-iteration comparison |
 
 Every component is off by default. `modules` picks which trainable modules get them; the others
 stay plain PPO, so one league run compares the two. [docs/components.md](docs/components.md)

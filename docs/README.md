@@ -9,6 +9,7 @@
 | [findings.md](findings.md) | How the components compared against plain PPO, and why two DiscoRL pieces were left out |
 | [development.md](development.md) | Tests, CI, gym-CDA compatibility and releasing |
 | [../CHANGELOG.md](../CHANGELOG.md) | What changed in each version |
+| [../CLAUDE.md](../CLAUDE.md) | Rules for coding agents, and the project skills in `.claude/skills/` |
 
 gym-CDA's side of the contract is its
 [docs/30_extensions.md](https://github.com/ChuaCheowHuan/gym-continuousDoubleAuction/blob/master/docs/30_extensions.md).

@@ -27,15 +27,12 @@ debiased as Adam debiases its moments. The moving average is `disco_rl.utils.Mov
 imported. The first batch is standardised exactly as before. Later
 batches keep their scale relative to the past rather than being stretched to unit variance.
 
-It runs right after RLlib's GAE step on the Learner. GAE does not keep the raw advantages, so
-they are recomputed as `value_targets - V(s)` with the same weights. The moments are saved with
-the Learner's state, so a resume continues them.
-
-RLlib's GAE connector writes standardised advantages, and the raw values are gone by the time it
-finishes. `EmaAdvantages` therefore recomputes them as `value_targets - V(s)` with the same
-weights. It then folds the batch into a debiased EMA of the first and second moments and
-normalises with that. Both steps are `disco_rl.utils.MovingAverage`'s `update_state` and
-`normalize`, through `upstream.EmaMoments`, which keeps the state as three plain floats.
+It runs right after RLlib's GAE step on the Learner. GAE writes standardised advantages and
+drops the raw ones, so `EmaAdvantages` recomputes them as `value_targets - V(s)` with the same
+weights, folds the batch into the debiased moments and normalises with them. Both steps are
+`disco_rl.utils.MovingAverage`'s `update_state` and `normalize`, through `upstream.EmaMoments`,
+which keeps the state as three plain floats. The moments are saved with the Learner's state, so a
+resume continues them.
 
 ## 3. Value normalisation
 

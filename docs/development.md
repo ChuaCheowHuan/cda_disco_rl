@@ -20,23 +20,27 @@ editable install.
 OMP_NUM_THREADS=1 python -m pytest -q
 ```
 
-The suite takes about two minutes on a CPU. Its tests are:
+The suite has 81 tests and takes a little over a minute on a CPU. Its files are:
 
 | File | What it checks |
 |---|---|
-| `test_extension.py` | Registration through the real entry point, the defaults, and every `validate` rule |
-| `test_target_policy.py` | The KL term, the EMA update after each step, and the Learner-state round trip |
-| `test_adv_ema.py` | The debiased moments, the connector's placement after GAE, and the state round trip |
-| `test_value_norm.py` | The module buffers, de-normalised `compute_values`, the loss on normalised targets, a checkpoint round trip, and its order after `EmaAdvantages` when `adv_ema` is on too |
-| `test_policy_prediction.py` | The head's shape, the per-component KL, terminal masking, and the next-observation connector |
-| `test_disco103.py` | The settings and weights load from the installed `disco_rl`, the bridge's targets and carried state, the torch value loss against `disco_rl`'s own, and a real run with a checkpoint round trip |
+| `test_extension.py` | Registration through the real entry point, the defaults, every `validate` rule, and that a run not enabling `discorl` imports neither it nor JAX |
+| `test_target_policy.py` | The EMA update of the target copy after each optimiser step |
+| `test_adv_ema.py` | The debiased moments against DiscoRL's formula, and the connector on selected modules and padding |
+| `test_value_norm.py` | The module buffers, de-normalised `compute_values`, the loss on normalised targets, and the connector |
+| `test_policy_prediction.py` | The discrete slices of the Dict action, and the per-component KL with masked actions |
+| `test_disco103.py` | The settings and weights from the installed `disco_rl`, the bridge's targets and carried state, the torch value loss against `disco_rl`'s own, the time-major packing, and a real run with a checkpoint round trip |
 | `test_packaging.py` | The installed `disco_rl` is the submodule unchanged, every subpackage of it is shipped, and the Disco103 weights are installed |
-| `test_real_run.py` | A real gym-CDA `Algorithm` training with every component but `disco103` on (`disco103` cannot be combined with three of them; its real run is in `test_disco103.py`), with the extension recorded in its checkpoint |
+| `test_real_run.py` | Two real gym-CDA runs: the extension enabled with every component off, and every component but `disco103` together on `policy_0` with a remote env runner, checked per component (connector order, moments, target copy, heads, one checkpoint restore of every component's state) |
 
-Each component's file also builds a real Learner where it matters, so a change in gym-CDA's
-Learner stack shows up here rather than in a training run.
+The component files test their pieces on stand-ins; the real runs show a change in gym-CDA's
+Learner stack here rather than in a training run. `tests/conftest.py` holds the tiny run config,
+one Ray session for the whole suite and `RealRun`, the base class that builds and trains an
+`Algorithm` once per test class. An `Algorithm` build costs seconds, so add checks to an existing
+run before adding a new one.
 
-Style: `ruff format .` (line length 100) and `pyflakes cda_discorl tests`.
+Style: `ruff format .` (line length 100) and `pyflakes cda_discorl tests`. CI does not check
+these yet (#21).
 
 ## 3. CI
 
@@ -59,8 +63,8 @@ What the package relies on in gym-CDA:
 - the `Extension` dataclass and `settings_for` in `train/extensions.py`
 - `CDAPPOTorchLearner._policy_value_loss`, the seam around PPO's loss
 - `POLICY_PREFIX` from `train/policy/policy_handler.py`
-- `_collect` from `train/model/moe_learner.py`, which `policy_prediction` uses to discard the MoE
-  routing statistics of its extra forward pass
+- `_collect` from `train/model/moe_learner.py`, which `policy_prediction` and `disco103` use to
+  discard the MoE routing statistics of their extra forward passes. It is private (#26)
 - `extra_trunk_heads`, read by `train/model/layout.py`, which declares `aux_pi` and `disco_heads`
   as heads of the trunk `pi` reads
 
@@ -85,8 +89,8 @@ gym-CDA's own tests of the contract are `test_extensions.py` and
    `config.py`. If it keeps Learner state, add it to `PER_LEARNER_STATE`. If it adds tensors to
    the module, add it to `STRUCTURAL_KEYS` and `components.MODULE_COMPONENTS`.
 4. Add its mixins to `DiscoLearnerMixin` and `DiscoModuleMixin` in `components.py`.
-5. Add a test file, and check that `test_real_run.py` still passes with every component on
-   (`disco103` aside).
+5. Add a test file for its pieces, and add the component to the combined run in
+   `test_real_run.py` (with its checks there) unless it excludes another component.
 6. Document it in the README, [components.md](components.md), [configuration.md](configuration.md),
    [architecture.md](architecture.md) and the [changelog](../CHANGELOG.md).
 
