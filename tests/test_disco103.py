@@ -4,19 +4,13 @@ The rule, its weights and its settings come from the installed `disco_rl`;
 nothing here copies them.
 """
 
-import shutil
-import tempfile
-
 import numpy as np
 import pytest
-import ray
 import torch
 
-from gym_continuousDoubleAuction.train import extensions
-from gym_continuousDoubleAuction.train.train import TrainConfig, build_config
-
-from cda_discorl import config
 from cda_discorl.disco103 import bridge, learner
+
+from conftest import RealRun, assert_declared_on_the_pi_trunk
 
 
 def _rollout(a=4, t=6, n=2, seed=0):
@@ -97,53 +91,12 @@ class TestTimeMajor:
         assert back.tolist() == [0, 1, 0, 3, 4, 5, 0]
 
 
-def _cfg(**kwargs):
-    base = dict(num_agents=4, num_trained_agents=2, episode_data_dir=None, log_level="ERROR")
-    return TrainConfig(**{**base, **kwargs})
+class TestInARealRun(RealRun):
+    """policy_0 learns by Disco103; policy_1 stays plain PPO. Two epochs, so the targets are
+    read by more than one pass over the batch."""
 
-
-def test_an_lstm_encoder_is_refused():
-    with pytest.raises(ValueError, match="stateless"):
-        config.validate({**config.DEFAULTS, "disco103": True}, _cfg(encoder_type="lstm"))
-
-
-TEST_CFG = dict(
-    num_agents=4,
-    num_trained_agents=2,
-    max_step=64,
-    num_episodes_per_iter=2,
-    num_epochs=2,
-    minibatch_size=64,
-    num_env_runners=0,
-    num_learners=0,
-    num_gpus_per_learner=0,
-    episode_data_dir=None,
-    log_level="ERROR",
-    seed=7,
-    extensions_enabled=["discorl"],
-    extension_settings={"discorl": {"disco103": True}},
-)
-
-
-class TestInARealRun:
-    """policy_0 learns by Disco103; policy_1 stays plain PPO."""
-
-    @classmethod
-    def setup_class(cls):
-        extensions.discover.cache_clear()
-        ray.init(ignore_reinit_error=True, include_dashboard=False, log_to_driver=False, num_cpus=2)
-        cls.log_dir = tempfile.mkdtemp()
-        cls.cfg = TrainConfig(**TEST_CFG, log_base_dir=cls.log_dir)
-        ppo_config, _cb = build_config(cls.cfg)
-        cls.algo = ppo_config.build_algo()
-        cls.learner = cls.algo.learner_group._learner
-        cls.result = cls.algo.train()
-
-    @classmethod
-    def teardown_class(cls):
-        cls.algo.stop()
-        ray.shutdown()
-        shutil.rmtree(cls.log_dir, ignore_errors=True)
+    settings = {"disco103": True}
+    overrides = {"num_epochs": 2}
 
     def test_every_discrete_component_has_finite_disco_losses(self):
         metrics = self.result["learners"]["policy_0"]
@@ -153,17 +106,9 @@ class TestInARealRun:
                 assert np.isfinite(float(metrics[f"discorl_d103_{name}_{term}_loss"])), (name, term)
         assert np.isfinite(float(metrics["total_loss"]))
 
-    def test_the_head_is_declared_on_the_trunk_it_reads(self):
-        # Continual Backprop resets the input weights of the heads `trunk_outputs`
-        # reports, so a head it did not see would read a replaced unit with the
-        # old unit's weights (cda_disco_rl#5).
-        from gym_continuousDoubleAuction.train.model.layout import trunk_outputs
-
+    def test_the_heads_are_declared_on_the_trunk_they_read(self):
         module = self.learner.module["policy_0"].unwrapped()
-        reads_pi = [t for t in trunk_outputs(module) if module.pi in t.heads]
-        assert reads_pi and all(t.extra_heads == [module.disco_heads] for t in reads_pi)
-        others = [t for t in trunk_outputs(module) if module.pi not in t.heads]
-        assert all(t.extra_heads == [] for t in others)
+        assert_declared_on_the_pi_trunk(module, module.disco_heads)
 
     def test_the_critic_reports_its_explained_variance(self):
         # train.compare reads it; without it a Disco103 row has no critic column.
@@ -182,14 +127,7 @@ class TestInARealRun:
             assert float(state["adv_ema_state"].decay_product) == pytest.approx(0.99)
 
     def test_the_checkpoint_restores_targets_and_meta_state(self):
-        from ray.rllib.algorithms.algorithm import Algorithm
-
-        from gym_continuousDoubleAuction.train.checkpoint import save_checkpoint
-
-        path = save_checkpoint(self.algo, self.cfg, 1)
-        restored = Algorithm.from_checkpoint(path)
-        try:
-            got = restored.learner_group._learner
+        with self.restored() as got:
             for k, v in self.learner._d103_targets["policy_0"].state_dict().items():
                 assert torch.equal(got._d103_targets["policy_0"].state_dict()[k].cpu(), v.cpu()), k
             want = self.learner._d103_streams["policy_0"]["category"]["rnn_state"]
@@ -198,5 +136,3 @@ class TestInARealRun:
                 np.asarray(want["lstm"]["meta_rnn_state"].hidden),
                 np.asarray(have["lstm"]["meta_rnn_state"].hidden),
             )
-        finally:
-            restored.stop()
