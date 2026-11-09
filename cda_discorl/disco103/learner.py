@@ -58,7 +58,12 @@ from gym_continuousDoubleAuction.train.extensions import settings_for
 from gym_continuousDoubleAuction.train.model.action_mask import MASK_LOGIT
 
 from cda_discorl.disco103.heads import out_key
-from cda_discorl.policy_prediction import categorical_kl, per_head_kl
+from cda_discorl.policy_prediction import (
+    categorical_kl,
+    component_dist_cls,
+    component_slices,
+    per_head_kl,
+)
 from cda_discorl.upstream import ema_update_
 
 NAME = "discorl"
@@ -99,17 +104,33 @@ def _from_time_major(tm: np.ndarray, lens) -> np.ndarray:
     return np.concatenate(rows, axis=0)
 
 
-def _non_discrete_kl(prev, curr, discrete, mean):
+def _component_dists(action_space, curr_inputs, prev_inputs, skip):
+    """`{name: (current, previous)}` for the components `skip` does not name.
+
+    Each is rebuilt from its own slice of `ACTION_DIST_INPUTS`, so the loss does
+    not read Ray's private `TorchMultiDistribution._original_struct` (#24).
+    """
+    dists = {}
+    for name, space, sl in component_slices(action_space):
+        if name in skip:
+            continue
+        cls = component_dist_cls(space)
+        dists[name] = (
+            cls.from_logits(curr_inputs[..., sl]),
+            cls.from_logits(prev_inputs[..., sl]),
+        )
+    return dists
+
+
+def _non_discrete_kl(dists, mean):
     """PPO's `KL(prev || curr)`, summed over the components Disco103 leaves to PPO.
 
     Ray's multi-action KL sums the per-component KLs; here the discrete ones are
     Disco103's and carry no PPO penalty, so only the rest belong in it (#10).
     """
     kl = 0.0
-    for name, child in curr._original_struct.items():
-        if name in discrete:
-            continue
-        kl = kl + mean(prev._original_struct[name].kl(child))
+    for curr, prev in dists.values():
+        kl = kl + mean(prev.kl(curr))
     return kl
 
 
@@ -173,6 +194,28 @@ class Disco103Learner:
 
     def _d103_write_targets(self, module, module_id, mbatch, lens, reward_scale) -> None:
         from gym_continuousDoubleAuction.train.model.moe_learner import _collect
+
+        # `_to_time_major` slices the rows by `lens` without checking them, and
+        # `_from_time_major` writes the targets back the same way: a row count
+        # that disagrees would hand the rule misaligned trajectories (#16).
+        rows = int(mbatch[Columns.REWARDS].shape[0])
+        if sum(lens) != rows:
+            raise ValueError(
+                f"discorl: {module_id}'s episodes cover {sum(lens)} rows, but the batch "
+                f"has {rows}; the Disco103 targets would be misaligned."
+            )
+        mask = mbatch.get(Columns.LOSS_MASK)
+        if mask is not None:
+            # PPO appends one bootstrap row per episode and the loss masks it
+            # out, so those rows must be exactly the ones `_from_time_major`
+            # zeroes. If that moved, the rows no longer pair with `lens`.
+            raw = mask.detach().cpu().numpy() if hasattr(mask, "detach") else np.asarray(mask)
+            flat = raw.astype(bool).reshape(rows, -1)[:, 0]
+            if not np.array_equal(np.flatnonzero(~flat), np.cumsum(lens) - 1):
+                raise ValueError(
+                    f"discorl: {module_id}'s masked rows are not the {len(lens)} "
+                    "bootstrap rows its episodes imply."
+                )
 
         with torch.no_grad():
             online = module._forward_train(mbatch)
@@ -297,19 +340,16 @@ class Disco103Learner:
         the entropy bonus and, when `use_kl_loss` is on, the KL penalty. The
         critic is PPO's too, since GAE's advantages for `size` come from it.
         """
-        curr = module.get_train_action_dist_cls().from_logits(fwd_out[Columns.ACTION_DIST_INPUTS])
-        prev = module.get_exploration_action_dist_cls().from_logits(
-            batch[Columns.ACTION_DIST_INPUTS]
-        )
+        curr_inputs = fwd_out[Columns.ACTION_DIST_INPUTS]
+        prev_inputs = batch[Columns.ACTION_DIST_INPUTS]
         discrete = {name for name, _ in module._d103_slices}
+        dists = _component_dists(module.action_space, curr_inputs, prev_inputs, discrete)
         loss = 0.0
         adv = batch[Postprocessing.ADVANTAGES]
         entropy_coeff = self.entropy_coeff_schedulers_per_module[module_id].get_current_value()
-        for name, child in curr._original_struct.items():
-            if name in discrete:
-                continue
+        for name, (child, prev_child) in dists.items():
             act = batch[Columns.ACTIONS][name]
-            ratio = torch.exp(child.logp(act) - prev._original_struct[name].logp(act))
+            ratio = torch.exp(child.logp(act) - prev_child.logp(act))
             surrogate = torch.min(
                 adv * ratio, adv * torch.clamp(ratio, 1 - config.clip_param, 1 + config.clip_param)
             )
@@ -322,7 +362,7 @@ class Disco103Learner:
             # Disco103's arm adds it for the ones PPO still trains. Ray's
             # `after_gradient_based_update` adapts the coefficient from this
             # metric and skips it when the metric is missing, so it is logged.
-            kl = _non_discrete_kl(prev, curr, discrete, mean)
+            kl = _non_discrete_kl(dists, mean)
             loss = loss + self.curr_kl_coeffs_per_module[module_id] * kl
             logs[LEARNER_RESULTS_KL_KEY] = kl
 

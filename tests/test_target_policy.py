@@ -1,5 +1,6 @@
 """The target policy component, piece by piece. Its real run is in `test_real_run.py`."""
 
+import pytest
 import torch
 from torch import nn
 
@@ -46,3 +47,30 @@ class TestEmaUpdate:
         learner._targets = None
         learner.apply_gradients({})
         assert learner.applied
+
+
+class _Named:
+    """A module whose single parameter's name is chosen, to break the pairing."""
+
+    def __init__(self, name):
+        self.module = nn.Module()
+        setattr(self.module, name, nn.Parameter(torch.zeros(2, 2)))
+
+    def named_parameters(self):
+        return self.module.named_parameters()
+
+    def parameters(self):
+        return self.module.parameters()
+
+
+class TestMismatchedCopies:
+    """A target that stopped matching the online module must fail loudly (#14)."""
+
+    def test_a_different_parameter_count_is_refused(self):
+        online = nn.Sequential(nn.Linear(3, 2), nn.Linear(2, 2))
+        with pytest.raises(ValueError, match="no longer matches"):
+            _Learner(online, nn.Linear(3, 2), coeff=0.9).apply_gradients({})
+
+    def test_different_parameter_names_are_refused(self):
+        with pytest.raises(ValueError, match="no longer matches"):
+            _Learner(_Named("w"), _Named("v"), coeff=0.9).apply_gradients({})

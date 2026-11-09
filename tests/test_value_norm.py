@@ -74,6 +74,27 @@ class TestModule:
         n.load_state_dict(m.state_dict())
         assert n.value_norm_stats() == m.value_norm_stats()
 
+    def test_the_stats_are_computed_once_per_update(self, monkeypatch):
+        # `compute_values` runs on every GAE pass and every minibatch loss, but
+        # the moments only move once per batch (#18, #30).
+        m = _module(on=True)
+        calls = []
+        real = upstream.EmaMoments.mean_std
+
+        def counting(self):
+            calls.append(1)
+            return real(self)
+
+        monkeypatch.setattr(upstream.EmaMoments, "mean_std", counting)
+        m.update_value_norm(torch.tensor([0.002, 0.006]))
+        after_update = len(calls)
+        assert after_update > 0
+        for _ in range(5):
+            m.compute_values({}, embeddings=torch.randn(2, 4))
+        assert len(calls) == after_update
+        m.update_value_norm(torch.tensor([0.003]))
+        assert len(calls) > after_update
+
 
 class _Metrics:
     def __init__(self):
