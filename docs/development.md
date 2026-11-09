@@ -20,7 +20,7 @@ editable install.
 OMP_NUM_THREADS=1 python -m pytest -q
 ```
 
-The suite has 81 tests and takes a little over a minute on a CPU. Its files are:
+The suite has 94 tests and takes a little over a minute on a CPU. Its files are:
 
 | File | What it checks |
 |---|---|
@@ -29,7 +29,7 @@ The suite has 81 tests and takes a little over a minute on a CPU. Its files are:
 | `test_adv_ema.py` | The debiased moments against DiscoRL's formula, and the connector on selected modules and padding |
 | `test_value_norm.py` | The module buffers, de-normalised `compute_values`, the loss on normalised targets, and the connector |
 | `test_policy_prediction.py` | The discrete slices of the Dict action, and the per-component KL with masked actions |
-| `test_disco103.py` | The settings and weights from the installed `disco_rl`, the bridge's targets and carried state, the torch value loss against `disco_rl`'s own, the time-major packing, and a real run with a checkpoint round trip |
+| `test_disco103.py` | The settings and weights from the installed `disco_rl`, the bridge's targets and carried state, the torch value loss against `disco_rl`'s own, the time-major packing, PPO's KL term over the components Disco103 leaves to PPO, and a real run with a checkpoint round trip and PPO's KL metrics |
 | `test_packaging.py` | The installed `disco_rl` is the submodule unchanged, every subpackage of it is shipped, and the Disco103 weights are installed |
 | `test_real_run.py` | Two real gym-CDA runs: the extension enabled with every component off, and every component but `disco103` together on `policy_0` with a remote env runner, checked per component (connector order, moments, target copy, heads, one checkpoint restore of every component's state) |
 

@@ -2,6 +2,18 @@
 
 ## 0.2.0 (unreleased)
 
+- **Fixed:** `validate` refuses a `modules` list that names a module twice (#12). Several pieces
+  loop over the list as given, so a repeat updated `value_norm` and Disco103 state twice per
+  batch, and `ValueNormMoments` decayed its EMA twice.
+- **Fixed:** `validate` refuses a numeric setting that is not a finite number (#13), with the
+  package's `extension_settings['discorl']: ...` message. A string used to raise a bare
+  `TypeError` from the comparison, a `true`/`false` passed as 0/1, and `inf` passed the
+  non-negative checks. `BUILT` stays as the extension point it always was, now documented.
+- **Fixed:** with `disco103` on, the continuous `size` component keeps PPO's KL penalty (#10).
+  Ray's `use_kl_loss` defaults to true, so plain PPO trains `size` with `kl_coeff * KL(prev ||
+  curr)` and an adaptive coefficient, while the Disco103 arm dropped that term. The arm now adds
+  it for the non-discrete components and logs `mean_kl_loss`, so Ray's coefficient keeps moving.
+
 - **Tests:** the per-component real runs became one run with every component but `disco103`
   together, sharing a Ray session and a `RealRun` base class (`tests/conftest.py`); redundant and
   trivial tests went. 103 tests in about three minutes became 81 in a little over one.

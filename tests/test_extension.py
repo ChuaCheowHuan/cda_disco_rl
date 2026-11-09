@@ -73,12 +73,30 @@ class TestValidation:
         with pytest.raises(ValueError, match="non-empty"):
             _cfg({"modules": []})
 
+    def test_modules_may_not_repeat(self):
+        # A repeat updates value_norm and Disco103 state twice per batch (#12).
+        with pytest.raises(ValueError, match="modules lists policy_0 more than once"):
+            _cfg({"modules": ["policy_0", "policy_0"]})
+
     def test_both_trainable_modules_may_be_selected(self):
         _cfg({"modules": ["policy_0", "policy_1"]})
 
     def test_a_switch_must_be_a_bool(self):
         with pytest.raises(ValueError, match="true or false"):
             _cfg({"adv_ema": 1})
+
+    @pytest.mark.parametrize("key", ["target_coeff", "target_kl_cost", "disco103_reward_scale"])
+    @pytest.mark.parametrize("value", ["0.9", True])
+    def test_a_number_that_is_not_a_number_gets_the_packages_message(self, key, value):
+        # Before #13 a string raised Python's TypeError from the comparison.
+        with pytest.raises(ValueError, match=rf"^extension_settings\['discorl'\]: {key} must be a"):
+            _cfg({key: value})
+
+    @pytest.mark.parametrize("key", ["target_coeff", "target_kl_cost", "disco103_reward_scale"])
+    def test_an_infinite_number_is_refused(self, key):
+        # `inf` passed the non-negative checks and is not a usable value (#13).
+        with pytest.raises(ValueError, match=rf"{key} must be finite"):
+            _cfg({key: float("inf")})
 
     @pytest.mark.parametrize(
         "key, value",

@@ -7,10 +7,33 @@ nothing here copies them.
 import numpy as np
 import pytest
 import torch
+from ray.rllib.algorithms.ppo.ppo import (
+    LEARNER_RESULTS_CURR_KL_COEFF_KEY,
+    LEARNER_RESULTS_KL_KEY,
+)
 
 from cda_discorl.disco103 import bridge, learner
 
 from conftest import RealRun, assert_declared_on_the_pi_trunk
+
+
+class _Child:
+    """A stand-in for one component's action distribution."""
+
+    def __init__(self, kl_value):
+        self.kl_value = kl_value
+        self.asked = []
+
+    def kl(self, other):
+        self.asked.append(other)
+        return torch.full((3,), self.kl_value)
+
+
+class _Dist:
+    """A stand-in for a multi-component action distribution."""
+
+    def __init__(self, **children):
+        self._original_struct = children
 
 
 def _rollout(a=4, t=6, n=2, seed=0):
@@ -91,6 +114,31 @@ class TestTimeMajor:
         assert back.tolist() == [0, 1, 0, 3, 4, 5, 0]
 
 
+class TestPPOKlTerm:
+    """The KL penalty `size` keeps from PPO (#10)."""
+
+    def test_it_is_kl_of_prev_given_curr_and_only_on_the_non_discrete_components(self):
+        size_curr, size_prev = _Child(0.0), _Child(0.5)
+        cat_curr, cat_prev = _Child(0.0), _Child(9.0)
+        kl = learner._non_discrete_kl(
+            _Dist(size=size_prev, category=cat_prev),
+            _Dist(size=size_curr, category=cat_curr),
+            {"category"},
+            lambda x: x.mean(),
+        )
+        assert kl == pytest.approx(0.5)
+        # PPO's direction is KL(prev || curr), as `prev.kl(curr)` in Ray.
+        assert size_prev.asked == [size_curr]
+        # The component Disco103 replaces is not in PPO's penalty.
+        assert cat_prev.asked == []
+
+    def test_it_is_zero_when_the_distributions_agree(self):
+        kl = learner._non_discrete_kl(
+            _Dist(size=_Child(0.0)), _Dist(size=_Child(0.0)), set(), lambda x: x.mean()
+        )
+        assert float(kl) == 0.0
+
+
 class TestInARealRun(RealRun):
     """policy_0 learns by Disco103; policy_1 stays plain PPO. Two epochs, so the targets are
     read by more than one pass over the batch."""
@@ -116,6 +164,13 @@ class TestInARealRun(RealRun):
 
     def test_the_continuous_component_keeps_ppo(self):
         assert "discorl_d103_size_policy_loss" in self.result["learners"]["policy_0"]
+
+    def test_the_size_head_keeps_ppos_kl_penalty(self):
+        # Without the KL term neither metric is logged, and Ray skips the
+        # coefficient update because it cannot find the KL (#10).
+        metrics = self.result["learners"]["policy_0"]
+        assert np.isfinite(float(metrics[LEARNER_RESULTS_KL_KEY]))
+        assert LEARNER_RESULTS_CURR_KL_COEFF_KEY in metrics
 
     def test_the_other_module_is_plain_ppo(self):
         assert not any("d103" in k for k in self.result["learners"]["policy_1"])

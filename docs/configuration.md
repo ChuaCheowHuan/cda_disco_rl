@@ -23,7 +23,7 @@ With gym-CDA's command-line tools, pass the same values with `--set`:
 
 | Key | Default | Range | Meaning |
 |---|---|---|---|
-| `modules` | `["policy_0"]` | Non-empty list of trainable module ids | Modules the components apply to; the others stay plain PPO |
+| `modules` | `["policy_0"]` | Non-empty list of unique trainable module ids | Modules the components apply to; the others stay plain PPO |
 | `target_policy` | `false` | bool | KL from the policy to an EMA copy of itself |
 | `target_coeff` | `0.9` | [0, 1) | Share of the copy kept at each step; it moves `1 - target_coeff` toward the online weights |
 | `target_kl_cost` | `0.1` | ≥ 0 | Weight of the KL term |
@@ -40,8 +40,13 @@ With gym-CDA's command-line tools, pass the same values with `--set`:
 
 `config.validate` raises a `ValueError` that names the key when:
 
-- `modules` names a module that is not trainable (`policy_0` to `policy_{num_trained_agents-1}`).
+- `modules` names a module that is not trainable (`policy_0` to `policy_{num_trained_agents-1}`),
+  or names one more than once: several pieces loop over the list as given, so a repeat would
+  update `value_norm` and Disco103 state twice per batch.
 - A switch is not `true` or `false`.
+- A numeric setting is not a number (a string, or a `true`/`false`), or is not finite (`inf`,
+  `nan`). The check runs before the range checks, so the message names the key rather than
+  Python's comparison error.
 - `target_policy`, `adv_ema`, `value_norm` or `disco103` is on with `num_learners > 1`, because
   their state lives on one Learner.
 - `disco103` is on with `target_policy`, `policy_prediction` or `value_norm`.

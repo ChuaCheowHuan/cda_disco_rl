@@ -24,6 +24,7 @@ decay. The rest are this package's own.
 
 from __future__ import annotations
 
+import math
 from typing import Any, Dict
 
 from gym_continuousDoubleAuction.train.policy.policy_handler import POLICY_PREFIX
@@ -61,8 +62,12 @@ COMPONENTS = (
     "disco103",
 )
 
-#: Components whose code has landed. A switch for any other one is refused
-#: rather than accepted and ignored, which would read as "it made no difference".
+#: Components whose code has landed. A switch is listed in `COMPONENTS` when its
+#: setting is added and added to `BUILT` when its code lands, so `validate`
+#: refuses a switch for a component that is not built yet rather than accepting
+#: it and ignoring it, which would read as "it made no difference". Every
+#: component today is built, so the check fires only for one added ahead of its
+#: code, or for a test that removes an entry (tests/test_extension.py).
 BUILT: frozenset = frozenset(COMPONENTS)
 
 #: Components Disco103 supplies itself (its targets include a policy target and
@@ -81,17 +86,33 @@ def _fail(message: str) -> None:
     raise ValueError(f"extension_settings['discorl']: {message}")
 
 
+def _number(settings, key: str) -> None:
+    """Reject a value that is not a finite number, before comparing it.
+
+    A `bool` is an `int` in Python, so it would pass a range check as 0 or 1;
+    an `int` is finite by definition, so only a `float` needs the test.
+    """
+    value = settings[key]
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        _fail(f"{key} must be a number, got {value!r}.")
+    if isinstance(value, float) and not math.isfinite(value):
+        _fail(f"{key} must be finite, got {value!r}.")
+
+
 def _in_unit_interval(settings, key: str) -> None:
+    _number(settings, key)
     if not 0.0 <= settings[key] < 1.0:
         _fail(f"{key} must be in [0, 1), got {settings[key]!r}.")
 
 
 def _positive(settings, key: str) -> None:
+    _number(settings, key)
     if not settings[key] > 0:
         _fail(f"{key} must be positive, got {settings[key]!r}.")
 
 
 def _non_negative(settings, key: str) -> None:
+    _number(settings, key)
     if not settings[key] >= 0:
         _fail(f"{key} must be non-negative, got {settings[key]!r}.")
 
@@ -105,6 +126,11 @@ def validate(settings: Dict[str, Any], cfg) -> None:
     unknown = sorted(set(modules) - set(trainable))
     if unknown:
         _fail(f"modules names {unknown}, which are not trainable. Trainable: {trainable}.")
+    # Several pieces loop over `modules` as given, so a repeat would update
+    # value_norm and Disco103 twice per batch rather than once (#12).
+    repeated = sorted({m for m in modules if modules.count(m) > 1})
+    if repeated:
+        _fail(f"modules lists {', '.join(map(str, repeated))} more than once.")
 
     for name in COMPONENTS:
         if not isinstance(settings[name], bool):
