@@ -24,7 +24,7 @@ eight tests skip and the rest of the suite runs unchanged.
 OMP_NUM_THREADS=1 python -m pytest -q
 ```
 
-The suite has 120 tests and takes a little over a minute on a CPU. Its files are:
+The suite has 120 tests and takes about a minute and a half on a CPU (`OMP_NUM_THREADS=1`). Its files are:
 
 | File | What it checks |
 |---|---|
@@ -44,18 +44,19 @@ one Ray session for the whole suite and `RealRun`, the base class that builds an
 `Algorithm` once per test class. An `Algorithm` build costs seconds, so add checks to an existing
 run before adding a new one.
 
-Style: `ruff format .` (line length 100) and `pyflakes cda_discorl tests`. CI does not check
-these yet (#21).
+Style: `ruff format .` (line length 100) and `pyflakes cda_discorl tests`. CI runs
+`ruff format --check .` and `pyflakes` before the tests (#21).
 
 ## 3. CI
 
 The workflow is [`.github/workflows/cda_discorl.yml`](../.github/workflows/cda_discorl.yml). It
-runs on pushes to `main` and on pull requests: it installs CPU PyTorch, gym-CDA at
-`GYM_CDA_REF` and this package, then runs the tests. Its checkout needs `submodules: true`, or
+runs on pushes to `main` and on pull requests: it checks formatting and pyflakes, installs CPU
+PyTorch, gym-CDA at `GYM_CDA_REF` and this package, then runs the tests. Its checkout needs `submodules: true`, or
 the build finds no `disco_rl`.
 
-`GYM_CDA_REF` defaults to gym-CDA's `master`. A manual run can test another ref with the
-`gym_cda_ref` input.
+The job runs twice, as a matrix over `GYM_CDA_REF`: the tag `v2.3.0` is the gate, and `master`
+runs beside it with `continue-on-error`, so a break upstream shows here without failing the
+build (#20). A manual run can test another ref with the `gym_cda_ref` input.
 
 ## 4. Compatibility with gym-CDA
 
