@@ -2,6 +2,9 @@
 
 ## 0.2.0 (unreleased)
 
+- **Docs corrected:** `docs/development.md` now says what CI does (it checks formatting and
+  pyflakes, and runs a `v2.3.0` gate beside a non-blocking `master` job) and gives the suite's
+  current size (120 tests, about a minute and a half); `CLAUDE.md` matches.
 - **Fixed:** `validate` refuses a `modules` list that names a module twice (#12). Several pieces
   loop over the list as given, so a repeat updated `value_norm` and Disco103 state twice per
   batch, and `ValueNormMoments` decayed its EMA twice.

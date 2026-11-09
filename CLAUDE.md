@@ -12,8 +12,8 @@ Learner, as a gym-CDA training extension named `discorl`. Start at `docs/README.
    only what must be torch or is specific to gym-CDA. Moving the pin: skill `discorl-bump-disco-rl`.
 2. **Settings live in `cda_discorl/config.py`.** A new key goes in `DEFAULTS` with its rule in
    `validate`; a default that `disco_rl` defines is read from it, not restated.
-3. **Run the suite with pytest:** `OMP_NUM_THREADS=1 python -m pytest -q` (about 80 tests, a
-   bit over a minute on a CPU). A test that needs a real `Algorithm` subclasses `RealRun` in
+3. **Run the suite with pytest:** `OMP_NUM_THREADS=1 python -m pytest -q` (about 120 tests,
+   under two minutes on a CPU). A test that needs a real `Algorithm` subclasses `RealRun` in
    `tests/conftest.py`; add checks to an existing run before adding a new one, because each run
    costs seconds. Before committing: `ruff format .` and `pyflakes cda_discorl tests`.
 4. **A fix lands with a test that fails without it.** Show it failing on the old source first.
