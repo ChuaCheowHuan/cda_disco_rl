@@ -13,9 +13,9 @@ on:
         description: gym-continuousDoubleAuction branch, tag or commit to test against
         required: false
 
-env:
-  # The gym-CDA ref carrying the extension point this package needs.
-  GYM_CDA_REF: ${{ inputs.gym_cda_ref || 'master' }}
+# The job only reads the repository; a default token would carry more scope.
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -24,6 +24,18 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The pinned tag is the gate: it is what a release is tested against.
+        # master runs alongside it, so a break there shows up here rather than
+        # in a user's run; it is not required to pass (#20).
+        gym_cda_ref: ["v2.3.0", "master"]
+    continue-on-error: ${{ matrix.gym_cda_ref == 'master' }}
+    env:
+      # The gym-CDA ref carrying the extension point this package needs. A
+      # `workflow_dispatch` run can name another one.
+      GYM_CDA_REF: ${{ inputs.gym_cda_ref || matrix.gym_cda_ref }}
 
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +48,15 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+
+      - name: Lint and format
+        # docs/development.md §2: the style is `ruff format` and `pyflakes`, and
+        # nothing else checks it (#21). Pinned with the Python version's tools,
+        # so a formatter release does not fail an unchanged tree.
+        run: |
+          pip install ruff==0.17.4 pyflakes
+          ruff format --check .
+          pyflakes cda_discorl tests
 
       - name: Install gym-CDA (CPU torch) and cda_discorl
         run: |
