@@ -20,8 +20,9 @@ Per discrete action component, the loss is DiscoRL's agent loss
 with the published costs. `pi_hat`, `y_hat`, `z_hat` and the two-hot value
 target `q_hat` all come from `disco_rl` through `bridge`; the torch side only
 computes the losses against them, since those need torch's gradients. The continuous `size` component keeps PPO's clipped
-surrogate and entropy bonus (`disco103_size_head: "ppo"`), and the scalar
-critic keeps PPO's value loss, since GAE's advantages for `size` come from it.
+surrogate, its entropy bonus and its KL penalty (`disco103_size_head: "ppo"`),
+and the scalar critic keeps PPO's value loss, since GAE's advantages for `size`
+come from it.
 
 Rewards are multiplied by `disco103_reward_scale` before the rule sees them:
 the rule was discovered on Atari-scale rewards, and this market's are around
@@ -43,7 +44,10 @@ from typing import Dict
 
 import numpy as np
 import torch
-from ray.rllib.algorithms.ppo.ppo import LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY
+from ray.rllib.algorithms.ppo.ppo import (
+    LEARNER_RESULTS_KL_KEY,
+    LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
+)
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.learner import GeneralAdvantageEstimation
 from ray.rllib.core.columns import Columns
@@ -93,6 +97,20 @@ def _from_time_major(tm: np.ndarray, lens) -> np.ndarray:
         part[: n - 1] = tm[: n - 1, i]
         rows.append(part)
     return np.concatenate(rows, axis=0)
+
+
+def _non_discrete_kl(prev, curr, discrete, mean):
+    """PPO's `KL(prev || curr)`, summed over the components Disco103 leaves to PPO.
+
+    Ray's multi-action KL sums the per-component KLs; here the discrete ones are
+    Disco103's and carry no PPO penalty, so only the rest belong in it (#10).
+    """
+    kl = 0.0
+    for name, child in curr._original_struct.items():
+        if name in discrete:
+            continue
+        kl = kl + mean(prev._original_struct[name].kl(child))
+    return kl
 
 
 class Disco103Targets(ConnectorV2):
@@ -273,7 +291,12 @@ class Disco103Learner:
         return total
 
     def _d103_size_and_critic_loss(self, module, module_id, config, batch, fwd_out, mean, logs):
-        """PPO's clipped surrogate and entropy on the continuous components, plus its critic."""
+        """PPO's loss on the continuous components and its critic.
+
+        This is PPO's loss minus the discrete components: the clipped surrogate,
+        the entropy bonus and, when `use_kl_loss` is on, the KL penalty. The
+        critic is PPO's too, since GAE's advantages for `size` come from it.
+        """
         curr = module.get_train_action_dist_cls().from_logits(fwd_out[Columns.ACTION_DIST_INPUTS])
         prev = module.get_exploration_action_dist_cls().from_logits(
             batch[Columns.ACTION_DIST_INPUTS]
@@ -293,6 +316,15 @@ class Disco103Learner:
             entropy = child.entropy()
             loss = loss + mean(-surrogate - entropy_coeff * entropy)
             logs[f"discorl_d103_{name}_policy_loss"] = mean(-surrogate)
+
+        if config.use_kl_loss:
+            # Plain PPO adds `kl_coeff * KL(prev || curr)` for every component;
+            # Disco103's arm adds it for the ones PPO still trains. Ray's
+            # `after_gradient_based_update` adapts the coefficient from this
+            # metric and skips it when the metric is missing, so it is logged.
+            kl = _non_discrete_kl(prev, curr, discrete, mean)
+            loss = loss + self.curr_kl_coeffs_per_module[module_id] * kl
+            logs[LEARNER_RESULTS_KL_KEY] = kl
 
         values = module.compute_values(batch, embeddings=fwd_out.get(Columns.EMBEDDINGS))
         vf = torch.clamp(
