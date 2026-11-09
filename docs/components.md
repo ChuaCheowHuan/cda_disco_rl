@@ -89,8 +89,9 @@ only what a torch Learner needs around it:
 - **Losses.** In torch, against those targets, with the rule's costs: KL to each target, the
   policy-prediction KL, and cross-entropy for the value. These must be torch, because the
   gradients flow through the torch module.
-- **The rest.** The continuous `size` component keeps PPO's clipped surrogate and the scalar
-  critic, since the rule handles one discrete action. Rewards are multiplied by
+- **The rest.** The continuous `size` component keeps PPO's clipped surrogate, its entropy bonus
+  and, when `use_kl_loss` is on (Ray's default), its KL penalty; the scalar critic is PPO's too,
+  since the rule handles one discrete action. Rewards are multiplied by
   `disco103_reward_scale` (default 100) first, because the rule was discovered on Atari-scale
   rewards. An EMA target network (the rule's `target_params_coeff`) and each stream's meta-RNN
   state are saved with the Learner.
@@ -116,3 +117,7 @@ Each component logs under its trained module's learner metrics, with a `discorl_
 `vf_explained_var` stays comparable with a plain PPO run's. With `value_norm` on it is computed
 from normalised targets and predictions, and normalising both the same way leaves explained
 variance unchanged.
+
+`disco103` also logs PPO's own `mean_kl_loss` and `curr_kl_coeff`, for the components PPO still
+trains (`size`), so the arm's KL column matches a plain PPO run's and Ray's adaptive coefficient
+keeps moving.
