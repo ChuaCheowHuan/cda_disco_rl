@@ -13,6 +13,36 @@
   Ray's `use_kl_loss` defaults to true, so plain PPO trains `size` with `kl_coeff * KL(prev ||
   curr)` and an adaptive coefficient, while the Disco103 arm dropped that term. The arm now adds
   it for the non-discrete components and logs `mean_kl_loss`, so Ray's coefficient keeps moving.
+- **Fixed:** `ema_update_` pairs the target and online parameters by name with a strict `zip`, and
+  raises when the copy no longer matches the module (#14). A target that lost or gained a head
+  used to blend the wrong tensors, or stop early, without a word.
+- **Fixed:** Disco103 checks that the batch rows are the episodes it was handed, and that the
+  masked rows are the bootstrap rows, before the rule sees them (#16). A Ray change that
+  reordered or re-chunked rows now fails loudly instead of training on shifted trajectories.
+
+- **Performance:** the Disco103 meta-network unroll is jitted (#29), one compilation per rollout
+  length. A 512 × 4 rollout takes about 0.04 s against 0.28 s eagerly; the fork stays unedited, a
+  shim answers the one `isinstance(logits, chex.Array)` guard for the tracer.
+- **Performance:** `value_norm` caches its `(mean, std)` and refreshes it only when the moments
+  move (#30), instead of two JAX `normalize` calls on every `compute_values`.
+- **Changed:** `policy_prediction` computes the next step's logits once per update batch, in a
+  connector right after GAE, and every minibatch reads them (#31). They are a pre-update target,
+  as in DiscoRL; with `num_epochs > 1` the loss therefore trains toward the pre-update policy
+  rather than toward the policy after earlier epochs' updates.
+- **Refactor:** Disco103's `size` loss rebuilds each component's distribution from its slice of
+  `ACTION_DIST_INPUTS` and no longer reads Ray's private `TorchMultiDistribution._original_struct`
+  (#24); the bridge builds its EMA states with `disco_rl.utils.MovingAverage` and the public
+  settings instead of the rule's private `_adv_ema` / `_td_ema` (#25).
+
+- **CI:** the workflow has a `permissions: contents: read` block, the JAX stack carries upper
+  bounds, and the gate runs against the pinned gym-CDA `v2.3.0` tag with a non-blocking `master`
+  job beside it (#20). A `lint` step runs `ruff format --check .` and `pyflakes cda_discorl tests`
+  before the tests (#21).
+- **Docs:** `docs/components.md` and `docs/findings.md` record that Disco103 keeps its published
+  `value_discount` 0.997 while the rest of the Learner uses the run's `gamma` (#11, #23).
+- **Tests:** real runs for a remote env runner under Disco103, `disco103` with `adv_ema`, a remote
+  Learner, and an `lstm` encoder with `target_policy`, `adv_ema` and `value_norm` (#19); and a
+  measurement of a Continual Backprop reset against both kinds of target copy (#27).
 
 - **Tests:** the per-component real runs became one run with every component but `disco103`
   together, sharing a Ray session and a `RealRun` base class (`tests/conftest.py`); redundant and
