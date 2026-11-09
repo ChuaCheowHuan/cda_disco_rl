@@ -34,6 +34,11 @@ MOVING_AVERAGE_DECAY: float = (
     inspect.signature(disco.DiscoUpdateRule.__init__).parameters["moving_average_decay"].default
 )
 
+#: The eps of those moving averages, from the same signature.
+MOVING_AVERAGE_EPS: float = (
+    inspect.signature(disco.DiscoUpdateRule.__init__).parameters["moving_average_eps"].default
+)
+
 
 class EmaMoments:
     """One stream's debiased moving average of a value's first two moments.
@@ -101,7 +106,24 @@ def _to_jax(values: torch.Tensor):
 
 def ema_update_(target: torch.nn.Module, online: torch.nn.Module, coeff: float) -> None:
     """`target = coeff * target + (1 - coeff) * online`, DiscoRL's target-parameter
-    update, in place on torch parameters (so it cannot be the upstream JAX tree map)."""
+    update, in place on torch parameters (so it cannot be the upstream JAX tree map).
+
+    The two modules must still pair up: the target is a `deepcopy` of the online
+    module made at build time, and a head added to one afterwards would make a
+    plain `zip` blend the wrong tensors, or silently stop early (#14).
+    """
+    t_params = list(target.named_parameters())
+    p_params = list(online.named_parameters())
+    if len(t_params) != len(p_params):
+        raise ValueError(
+            f"target has {len(t_params)} parameters, online has {len(p_params)}: "
+            "the target copy no longer matches the module."
+        )
     with torch.no_grad():
-        for t, p in zip(target.parameters(), online.parameters()):
+        for (t_name, t), (p_name, p) in zip(t_params, p_params, strict=True):
+            if t_name != p_name:
+                raise ValueError(
+                    f"target parameter {t_name!r} pairs with online {p_name!r}: "
+                    "the target copy no longer matches the module."
+                )
             t.mul_(coeff).add_(p.detach(), alpha=1.0 - coeff)

@@ -19,6 +19,10 @@ The moments are module buffers, so they are saved and restored with the
 module's weights. They are not PopArt: when the moments move, the
 denormalised value moves with them for one update. With a slow EMA that step is
 small.
+
+The `(mean, std)` pair derived from them is cached, because `value_norm_stats`
+is called on every GAE pass, every minibatch's loss and every advantage-EMA
+pass, while the moments move only once per update batch (#18, #30).
 """
 
 from __future__ import annotations
@@ -57,6 +61,8 @@ class ValueNormModule:
     _vn_on = False
     #: While true, `compute_values` returns the head's normalised prediction.
     _vn_raw = False
+    #: `(mean, std)` derived from the buffers; None until first needed.
+    _vn_stats = None
 
     def setup(self):
         super().setup()
@@ -69,6 +75,14 @@ class ValueNormModule:
         # they travel with the weights.
         for name, start in zip(_MOMENTS, (0.0, 0.0, 1.0)):
             self.register_buffer(f"_vn_{name}", torch.tensor(start, dtype=torch.float64))
+        # `load_state_dict` writes the buffers without going through
+        # `set_state`; the cached pair must follow them.
+        self.register_load_state_dict_post_hook(ValueNormModule._vn_refresh)
+
+    @staticmethod
+    def _vn_refresh(module, incompatible_keys=None) -> None:
+        m = module._vn_moments()
+        module._vn_stats = m.mean_std() if m.updated else (0.0, 1.0)
 
     def _vn_moments(self) -> EmaMoments:
         m = EmaMoments(self._vn_decay)
@@ -77,14 +91,16 @@ class ValueNormModule:
 
     def value_norm_stats(self):
         """`(mean, std)` of the value targets so far; `(0, 1)` before any update."""
-        m = self._vn_moments()
-        return m.mean_std() if m.updated else (0.0, 1.0)
+        if self._vn_stats is None:
+            self._vn_refresh(self)
+        return self._vn_stats
 
     def update_value_norm(self, targets: torch.Tensor) -> None:
         m = self._vn_moments()
         m.update(targets)
         for name, value in m.get_state().items():
             getattr(self, f"_vn_{name}").fill_(value)
+        self._vn_refresh(self)
 
     def set_state(self, state) -> None:
         # RLlib's set_state casts float64 arrays to float32. Restore the moments
@@ -97,6 +113,7 @@ class ValueNormModule:
             if key in state:
                 value = torch.as_tensor(np.asarray(state[key]), dtype=torch.float64)
                 getattr(self, key).copy_(value)
+        self._vn_refresh(self)
 
     def compute_values(self, batch, embeddings=None):
         values = super().compute_values(batch, embeddings=embeddings)

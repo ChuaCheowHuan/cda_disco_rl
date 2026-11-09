@@ -16,6 +16,10 @@ The target network's outputs are computed in torch and handed in; the rule's
 own target-parameter update is fed an empty tree and its result discarded,
 since the torch Learner keeps that copy.
 
+The meta-network's unroll is jitted: `_TracerTolerantChex` answers the one
+`isinstance(logits, chex.Array)` guard for the tracer `jax.jit` passes, without
+touching the fork (#29).
+
 `heads` and `learner` import this module only when `disco103` is on, so a run
 without it never builds the meta-network.
 """
@@ -30,16 +34,47 @@ import jax.numpy as jnp
 import numpy as np
 import rlax
 from disco_rl import types, utils
+from disco_rl.networks import meta_nets
 from disco_rl.update_rules import disco
 from disco_rl.value_fns import value_utils
 
-from cda_discorl.upstream import HYPER_PARAMS, SETTINGS as _SETTINGS
+from cda_discorl.upstream import (
+    HYPER_PARAMS,
+    MOVING_AVERAGE_DECAY,
+    MOVING_AVERAGE_EPS,
+    SETTINGS as _SETTINGS,
+)
 
 #: What the torch side needs from the rule's published settings.
 PREDICTION_SIZE = int(_SETTINGS.update_rule.net.prediction_size)
 NUM_BINS = int(_SETTINGS.update_rule.num_bins)
 MAX_ABS_VALUE = float(_SETTINGS.update_rule.max_abs_value)
 HEAD_INIT_STD = float(_SETTINGS.net_settings.net_args.head_w_init_std)
+
+
+class _TracerTolerantChex:
+    """`chex`, with `chex.Array` also accepting a JAX tracer.
+
+    The fork's meta-network guards its input with `isinstance(logits,
+    chex.Array)`, which is false for the tracer `jax.jit` passes, so the unroll
+    could not be jitted. Only `Array` differs here; every other attribute is
+    `chex` itself. The fork's file is unchanged (#29).
+    """
+
+    def __init__(self, chex_module):
+        self._chex = chex_module
+        self.Array = (chex_module.Array, jax.core.Tracer)
+
+    def __getattr__(self, name):
+        return getattr(self._chex, name)
+
+
+def _tracer_tolerant_chex() -> None:
+    """Install the shim once, before the first traced call of the meta-network."""
+    import chex
+
+    if not isinstance(meta_nets.chex, _TracerTolerantChex):
+        meta_nets.chex = _TracerTolerantChex(chex)
 
 
 def load_weights() -> Dict[str, Dict[str, np.ndarray]]:
@@ -78,22 +113,35 @@ class Bridge:
     """Disco103 with its published weights, ready to produce targets."""
 
     def __init__(self):
-        self.rule = disco.DiscoUpdateRule(**dict(_SETTINGS.update_rule))
+        rule_settings = dict(_SETTINGS.update_rule)
+        self.rule = disco.DiscoUpdateRule(**rule_settings)
         self.hyper_params = dict(HYPER_PARAMS)
         self.params = jax.tree.map(jnp.asarray, load_weights())
+        # The rule's own advantage and TD averages, rebuilt from its public
+        # settings rather than read off its private attributes (#25). A settings
+        # key overrides the signature default, as it does for the rule.
+        self._moving_average = utils.MovingAverage(
+            jnp.zeros(()),
+            decay=float(rule_settings.get("moving_average_decay", MOVING_AVERAGE_DECAY)),
+            eps=float(rule_settings.get("moving_average_eps", MOVING_AVERAGE_EPS)),
+        )
+        # One compiled unroll per rollout length (#29). The first call at a new
+        # length pays about a second of compilation; after that a 512 x 4
+        # rollout takes about 0.04 s against 0.28 s eagerly.
+        _tracer_tolerant_chex()
+        self._unroll_jit = jax.jit(self._unroll)
 
     def new_state(self) -> Dict[str, Any]:
         _, rnn_state = self.rule.init_params(jax.random.PRNGKey(0))
         return dict(
             rnn_state=rnn_state,
-            adv_ema_state=self.rule._adv_ema.init_state(),
-            td_ema_state=self.rule._td_ema.init_state(),
+            adv_ema_state=self._moving_average.init_state(),
+            td_ema_state=self._moving_average.init_state(),
             target_params={},
         )
 
     def _unroll(self, meta_state, actions, rewards, is_terminal, agent_out, behaviour, target):
-        # Not jitted: under `jit` a tracer fails the upstream meta-net's
-        # `isinstance(logits, chex.Array)` check with current JAX.
+        """One meta-network unroll; `Bridge` calls it through `jax.jit`."""
         rollout = types.UpdateRuleInputs(
             observations=jnp.zeros(actions.shape),
             actions=actions,
@@ -122,7 +170,7 @@ class Bridge:
         """Targets for one stream. Arrays are time-major, `[T + 1, B, ...]` except
         `rewards` and `is_terminal`, `[T, B]`. Returns `(targets, new_state)`."""
         as_j = lambda x: jnp.asarray(x, jnp.float32)  # noqa: E731
-        out, new_state = self._unroll(
+        out, new_state = self._unroll_jit(
             state,
             jnp.asarray(actions, jnp.int32),
             as_j(rewards),

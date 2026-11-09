@@ -17,16 +17,19 @@ license-files = ["LICENSE", "NOTICE", "third_party/disco_rl/LICENSE"]
 # [tool.setuptools] below), so its dependencies are listed here: the ones the
 # shipped packages import, leaving out the plotting ones its colabs use.
 # This package imports what disco_rl provides rather than reimplementing it.
+# The JAX stack carries upper bounds: disco_rl's meta-network already works
+# around one chex/JAX incompatibility, and a new JAX release can break Disco103
+# with no change here (#20).
 dependencies = [
     "gym_continuousDoubleAuction>=2.1,<3",
-    "jax",
-    "distrax",
-    "optax",
-    "jmp",
-    "rlax",
-    "dm-haiku",
-    "immutabledict",
-    "ml_collections",
+    "jax<0.13",
+    "distrax<0.2",
+    "optax<0.3",
+    "jmp<0.1",
+    "rlax<0.2",
+    "dm-haiku<0.1",
+    "immutabledict<5",
+    "ml_collections<2",
 ]
 
 [project.optional-dependencies]

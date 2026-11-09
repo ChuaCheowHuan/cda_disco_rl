@@ -3,6 +3,7 @@
 import gymnasium as gym
 import numpy as np
 import torch
+from ray.rllib.core.columns import Columns
 
 from cda_discorl import policy_prediction as pp
 
@@ -13,6 +14,28 @@ SPACE = gym.spaces.Dict(
         "price": gym.spaces.Discrete(4),
     }
 )
+
+
+class _FakeModule:
+    """A module stand-in: a known flat `ACTION_DIST_INPUTS` over `SPACE`."""
+
+    def __init__(self):
+        self._pp_slices = pp.discrete_slices(SPACE)
+        self.encoder = None
+        self.calls = []
+
+    def _forward(self, batch):
+        self.calls.append(batch)
+        rows = batch[Columns.OBS].shape[0]
+        return {Columns.ACTION_DIST_INPUTS: torch.arange(9.0).expand(rows, 9)}
+
+
+class _Wrapped:
+    def __init__(self, module):
+        self._module = module
+
+    def unwrapped(self):
+        return self._module
 
 
 class TestPieces:
@@ -47,3 +70,26 @@ class TestPieces:
         t = torch.tensor([[0.0, -1.0e9, 0.0]])
         p = torch.tensor([[0.0, 5.0, 0.0]])
         assert torch.isfinite(pp.per_head_kl(t, p, [3])).all()
+
+
+class TestTargets:
+    """The next-step logits are a batch column, written once (#18, #31)."""
+
+    def test_it_writes_the_discrete_logits_of_the_next_observation(self):
+        module = _FakeModule()
+        batch = {"p": {Columns.NEXT_OBS: torch.zeros(2, 5)}}
+        out = pp.PolicyPredictionTargets(["p"])(
+            rl_module={"p": _Wrapped(module)}, batch=batch, episodes=None
+        )
+        got = out["p"][pp.NEXT_LOGITS]
+        # category 0:3 and price 3:7; the Box's 7:9 is not a discrete target.
+        assert got.shape == (2, 7)
+        assert got[0].tolist() == [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        assert len(module.calls) == 1
+
+    def test_a_module_without_the_column_is_skipped(self):
+        batch = {}
+        out = pp.PolicyPredictionTargets(["p"])(
+            rl_module={"p": _Wrapped(_FakeModule())}, batch=batch, episodes=None
+        )
+        assert out == {}

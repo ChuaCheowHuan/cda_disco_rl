@@ -107,6 +107,11 @@ It is back in 0.2.0 as the experimental `disco103` component, which imports the 
 These numbers come from the earlier version, which ran the same rule through the same kind of
 bridge; the new one has not been compared yet.
 
+One difference from plain PPO is deliberate: the rule keeps its published `value_discount` 0.997
+for the discrete actions' value targets, while the rest of the Learner uses the run's `gamma`
+0.999. Under `disco103` the discrete actions therefore optimise a horizon about three times
+shorter than the `size` component and the critic; `docs/components.md` §5 records it (#11, #23).
+
 ## 5. Reproducing a run
 
 With gym-CDA and this package installed, one arm and one seed is:

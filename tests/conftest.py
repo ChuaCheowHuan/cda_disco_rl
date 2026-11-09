@@ -32,12 +32,19 @@ TINY = dict(
 )
 
 
-def train_config(settings=None, **overrides) -> TrainConfig:
-    """A tiny `TrainConfig` with `discorl` enabled and `settings` as its block."""
+def train_config(
+    settings=None, *, extensions=("discorl",), extra_settings=None, **overrides
+) -> TrainConfig:
+    """A tiny `TrainConfig` with `discorl` enabled and `settings` as its block.
+
+    `extensions` and `extra_settings` add another extension, such as `cbp` (#27).
+    """
+    blocks = {"discorl": settings or {}}
+    blocks.update(extra_settings or {})
     return TrainConfig(
         **{**TINY, **overrides},
-        extensions_enabled=["discorl"],
-        extension_settings={"discorl": settings or {}},
+        extensions_enabled=list(extensions),
+        extension_settings=blocks,
     )
 
 
@@ -60,6 +67,9 @@ class RealRun:
 
     settings: dict = {}
     overrides: dict = {}
+    #: Extensions to enable besides `discorl`; `extra_settings` is their blocks.
+    extensions = ("discorl",)
+    extra_settings: dict = {}
     iterations = 1
 
     @pytest.fixture(scope="class", autouse=True)
@@ -67,7 +77,14 @@ class RealRun:
     def _real_run(cls, ray_session):
         extensions.discover.cache_clear()
         log_dir = tempfile.mkdtemp()
-        cls.cfg = train_config(cls.settings, seed=7, log_base_dir=log_dir, **cls.overrides)
+        cls.cfg = train_config(
+            cls.settings,
+            extensions=cls.extensions,
+            extra_settings=cls.extra_settings,
+            seed=7,
+            log_base_dir=log_dir,
+            **cls.overrides,
+        )
         ppo_config, _callbacks = build_config(cls.cfg)
         cls.algo = ppo_config.build_algo()
         cls.learner = cls.algo.learner_group._learner

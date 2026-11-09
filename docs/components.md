@@ -55,6 +55,11 @@ module's `_vn_raw` flag around the `super()` call, so PPO's critic loss compares
 targets with the head's normalised output. Everywhere else, `compute_values` returns
 `mean + std * head`, so GAE and RLlib's metrics keep reward units.
 
+The `(mean, std)` pair is cached on the module and refreshed only when the moments move: by
+`ValueNormMoments`, and by `set_state` or `load_state_dict` on a restore. `compute_values` runs on
+every GAE pass, every minibatch's loss and every `EmaAdvantages` pass, so recomputing it in JAX
+each time was pure overhead (#30).
+
 ## 4. Policy prediction
 
 DiscoRL's agent has an auxiliary output that predicts, for each action it could take now, the
@@ -68,7 +73,10 @@ KL(next-step policy || prediction), with terminal steps masked out. It is weight
 `policy_prediction_cost` and logged as `discorl_policy_prediction_loss`.
 
 It adds the next observation to the Learner's train batch when the run does not already carry it
-(JEPA runs do). It needs a stateless encoder, so it refuses `encoder_type: lstm`. The head lives
+(JEPA runs do). `PolicyPredictionTargets` then computes the next step's logits once per update
+batch, right after GAE, and writes them into the batch; every minibatch of every epoch reads them
+per row. They are therefore a pre-update target, as in DiscoRL, which is what makes several epochs
+cheap (#31). It needs a stateless encoder, so it refuses `encoder_type: lstm`. The head lives
 only on the Learner's copy of a module; env runners do not build it.
 
 ## 5. Disco103
@@ -102,6 +110,23 @@ stateless encoder. Its losses are logged per discrete component as
 `discorl_d103_<component>_{pi,y,z,aux,q}_loss`, and the size head's as
 `discorl_d103_size_policy_loss`. Each module grows to about 9.3M parameters against 0.26M, a run takes about
 4× as long, and each run holds about 4 GB of memory.
+
+The rule's meta-network unroll is jitted, one compilation per rollout length (#29). A 512 × 4
+rollout takes about 0.04 s against 0.28 s eagerly, after about 1.2 s of compilation. The fork is
+untouched: a small shim answers the one `isinstance(logits, chex.Array)` guard for the tracer
+`jax.jit` passes.
+
+The `size` loss rebuilds each component's distribution from its own slice of `ACTION_DIST_INPUTS`,
+rather than reading Ray's private `TorchMultiDistribution._original_struct` (#24). The batch rows
+are checked against the episode lengths before the rule sees them, so a misaligned batch fails
+loudly instead of training on shifted trajectories (#16).
+
+**The horizon.** The rule keeps its published `value_discount` 0.997 (about a 330-step horizon)
+and `value_fn_td_lambda` 0.95 for the discrete actions' TD(λ) value targets, while GAE and the
+scalar critic use the run's `gamma` 0.999 (about a 1,000-step horizon). The discrete actions
+therefore optimise a horizon about three times shorter than the `size` component and the critic.
+That is a deliberate part of the published rule, kept as published (#11); it applies only under
+`disco103`.
 
 ## 6. Metrics
 

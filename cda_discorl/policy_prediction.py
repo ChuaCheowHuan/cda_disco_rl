@@ -18,10 +18,11 @@ Pieces:
   PolicyPredictionModule  - adds `aux_pi` from the actor embedding, written to
                             `fwd_out` on the train pass. Not built on
                             inference-only (env-runner) modules.
+  PolicyPredictionTargets - writes the next step's logits into the batch, once
+                            per update batch, right after GAE.
   PolicyPredictionLearner - adds RLlib's next-observation piece to the
                             Learner's connector when the run does not already
-                            have it, computes the next-step logits under
-                            `no_grad`, and adds the loss.
+                            have it, and adds the loss against the targets.
 
 Needs a stateless encoder: the next step's policy of a recurrent module
 depends on a state the train batch does not carry.
@@ -34,9 +35,11 @@ from typing import List, Tuple
 import gymnasium as gym
 import torch
 from torch import nn
+from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.learner import (
     AddNextObservationsFromEpisodesToTrainBatch,
     AddOneTsToEpisodesAndTruncate,
+    GeneralAdvantageEstimation,
 )
 from ray.rllib.core.columns import Columns
 
@@ -47,12 +50,15 @@ NAME = "discorl"
 #: `fwd_out` key holding the head's output, `[..., n_category, n_discrete_logits]`.
 AUX_PI = "discorl_aux_pi"
 
+#: Batch column: the next step's discrete logits, gathered, `[rows, sum(widths)]`.
+NEXT_LOGITS = "discorl_pp_next_logits"
+
 #: Metric logged per module.
 POLICY_PREDICTION_LOSS_KEY = "discorl_policy_prediction_loss"
 
 
-def discrete_slices(action_space: gym.spaces.Dict) -> List[Tuple[str, slice]]:
-    """Each Discrete component's slice in the flat `ACTION_DIST_INPUTS`.
+def component_slices(action_space: gym.spaces.Dict) -> List[Tuple[str, gym.Space, slice]]:
+    """Each action component's `(name, space, slice)` in the flat `ACTION_DIST_INPUTS`.
 
     Components appear in the Dict's order; a Box contributes `2 * prod(shape)`
     inputs (RLlib's diagonal Gaussian), as in gym-CDA's `category_logit_slice`.
@@ -61,13 +67,41 @@ def discrete_slices(action_space: gym.spaces.Dict) -> List[Tuple[str, slice]]:
     for name, space in action_space.spaces.items():
         if isinstance(space, gym.spaces.Discrete):
             width = int(space.n)
-            out.append((name, slice(offset, offset + width)))
         elif isinstance(space, gym.spaces.Box):
             width = 2 * int(torch.tensor(space.shape).prod())
         else:
             raise TypeError(f"policy_prediction: unsupported action component {name!r}")
+        out.append((name, space, slice(offset, offset + width)))
         offset += width
     return out
+
+
+def component_dist_cls(space: gym.Space) -> type:
+    """RLlib's distribution class for one action component.
+
+    This is the mapping RLlib's default catalog uses for a `Dict` action space,
+    which is what gym-CDA's module is built with: `TorchCategorical` for a
+    `Discrete` component and `TorchDiagGaussian` for a `Box` one.
+    """
+    from ray.rllib.core.distribution.torch.torch_distribution import (
+        TorchCategorical,
+        TorchDiagGaussian,
+    )
+
+    if isinstance(space, gym.spaces.Discrete):
+        return TorchCategorical
+    if isinstance(space, gym.spaces.Box):
+        return TorchDiagGaussian
+    raise TypeError(f"policy_prediction: unsupported action component space {space!r}")
+
+
+def discrete_slices(action_space: gym.spaces.Dict) -> List[Tuple[str, slice]]:
+    """Each Discrete component's slice in the flat `ACTION_DIST_INPUTS`."""
+    return [
+        (name, sl)
+        for name, space, sl in component_slices(action_space)
+        if isinstance(space, gym.spaces.Discrete)
+    ]
 
 
 def gather_discrete(logits: torch.Tensor, slices) -> torch.Tensor:
@@ -136,6 +170,37 @@ class PolicyPredictionModule:
         return out
 
 
+class PolicyPredictionTargets(ConnectorV2):
+    """Writes the next step's policy logits into the batch, once per update batch.
+
+    The loss used to run a forward pass on `NEXT_OBS` for every minibatch of
+    every epoch. Computed here, the targets are pre-update, as DiscoRL computes
+    them, and the cost is one pass per batch (#18, #31).
+    """
+
+    def __init__(self, module_ids, **kwargs):
+        super().__init__(**kwargs)
+        self.module_ids = list(module_ids)
+
+    def __call__(self, *, rl_module, batch, episodes=None, **kwargs):
+        for module_id in self.module_ids:
+            if module_id not in batch:
+                continue
+            mbatch = batch[module_id]
+            module = rl_module[module_id].unwrapped()
+            with torch.no_grad():
+                logits = module._forward({Columns.OBS: mbatch[Columns.NEXT_OBS]})[
+                    Columns.ACTION_DIST_INPUTS
+                ]
+            # An MoE encoder leaves routing stats behind on every pass; drop
+            # this one's so they are not counted with the next train pass.
+            from gym_continuousDoubleAuction.train.model.moe_learner import _collect
+
+            _collect(module.encoder)
+            mbatch[NEXT_LOGITS] = gather_discrete(logits, module._pp_slices).detach()
+        return batch
+
+
 class PolicyPredictionLearner:
     """Learner mixin: next observations in the batch, and the prediction loss."""
 
@@ -154,6 +219,11 @@ class PolicyPredictionLearner:
             self._learner_connector.insert_after(
                 AddOneTsToEpisodesAndTruncate, AddNextObservationsFromEpisodesToTrainBatch()
             )
+        # After GAE, as Disco103Targets is: one pass per update batch, before
+        # the first minibatch's loss reads the targets.
+        self._learner_connector.insert_after(
+            GeneralAdvantageEstimation, PolicyPredictionTargets(s["modules"])
+        )
 
     def _policy_value_loss(self, *, module_id, config, batch, fwd_out):
         loss = super()._policy_value_loss(
@@ -163,16 +233,7 @@ class PolicyPredictionLearner:
         if self._pp_cost is None or not getattr(module, "_pp_on", False):
             return loss
 
-        with torch.no_grad():
-            next_logits = module._forward({Columns.OBS: batch[Columns.NEXT_OBS]})[
-                Columns.ACTION_DIST_INPUTS
-            ]
-            # An MoE encoder leaves routing stats behind on every pass; drop
-            # this one's so they are not counted with the next train pass.
-            from gym_continuousDoubleAuction.train.model.moe_learner import _collect
-
-            _collect(module.encoder)
-        target = gather_discrete(next_logits, module._pp_slices)
+        target = batch[NEXT_LOGITS]
 
         category = batch[Columns.ACTIONS]["category"].long()
         aux = fwd_out[AUX_PI]

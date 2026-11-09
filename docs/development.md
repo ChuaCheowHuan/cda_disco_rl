@@ -14,24 +14,29 @@ pip install -e '.[test]'
 `@<ref>` to take `master`. Clone this repository with `--recurse-submodules` (§4) before the
 editable install.
 
+`pip install "cda-cbp @ git+https://github.com/ChuaCheowHuan/cda_cbp"` adds the tests that measure
+a Continual Backprop reset against the target copies (`test_cbp_targets.py`); without it those
+eight tests skip and the rest of the suite runs unchanged.
+
 ## 2. Tests
 
 ```bash
 OMP_NUM_THREADS=1 python -m pytest -q
 ```
 
-The suite has 94 tests and takes a little over a minute on a CPU. Its files are:
+The suite has 120 tests and takes a little over a minute on a CPU. Its files are:
 
 | File | What it checks |
 |---|---|
 | `test_extension.py` | Registration through the real entry point, the defaults, every `validate` rule, and that a run not enabling `discorl` imports neither it nor JAX |
-| `test_target_policy.py` | The EMA update of the target copy after each optimiser step |
+| `test_target_policy.py` | The EMA update of the target copy after each optimiser step, and that a copy that stopped matching the module fails loudly |
 | `test_adv_ema.py` | The debiased moments against DiscoRL's formula, and the connector on selected modules and padding |
-| `test_value_norm.py` | The module buffers, de-normalised `compute_values`, the loss on normalised targets, and the connector |
-| `test_policy_prediction.py` | The discrete slices of the Dict action, and the per-component KL with masked actions |
-| `test_disco103.py` | The settings and weights from the installed `disco_rl`, the bridge's targets and carried state, the torch value loss against `disco_rl`'s own, the time-major packing, PPO's KL term over the components Disco103 leaves to PPO, and a real run with a checkpoint round trip and PPO's KL metrics |
+| `test_value_norm.py` | The module buffers, the cached `(mean, std)`, de-normalised `compute_values`, the loss on normalised targets, and the connector |
+| `test_policy_prediction.py` | The discrete slices of the Dict action, the per-component KL with masked actions, and the connector that writes the next-step logits once per batch |
+| `test_disco103.py` | The settings and weights from the installed `disco_rl`, the bridge's targets and carried state, the torch value loss against `disco_rl`'s own, the time-major packing, the jitted unroll against the eager one, PPO's KL term over the components Disco103 leaves to PPO, the rebuilt per-component distributions, and three real runs (local, a remote env runner, and `adv_ema`) |
+| `test_cbp_targets.py` | What a Continual Backprop reset costs a target copy: the online-copy gap and the target-policy KL over the next 20 optimiser steps, for `target_policy` and for `disco103`. Skipped without cda-cbp |
 | `test_packaging.py` | The installed `disco_rl` is the submodule unchanged, every subpackage of it is shipped, and the Disco103 weights are installed |
-| `test_real_run.py` | Two real gym-CDA runs: the extension enabled with every component off, and every component but `disco103` together on `policy_0` with a remote env runner, checked per component (connector order, moments, target copy, heads, one checkpoint restore of every component's state) |
+| `test_real_run.py` | Real gym-CDA runs: the extension enabled with every component off, every component but `disco103` together on `policy_0` with a remote env runner, the same components on a remote Learner, and an `lstm` encoder with the components it allows |
 
 The component files test their pieces on stand-ins; the real runs show a change in gym-CDA's
 Learner stack here rather than in a training run. `tests/conftest.py` holds the tiny run config,

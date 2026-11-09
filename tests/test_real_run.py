@@ -8,6 +8,7 @@ excludes three of the others; its own real run is in `test_disco103.py`.
 
 import numpy as np
 import pytest
+import ray
 import torch
 
 from gym_continuousDoubleAuction.train import extensions
@@ -52,6 +53,73 @@ ALL_BUT_DISCO103 = {
     "adv_ema_decay": 0.9,
     "value_norm_decay": 0.9,
 }
+
+
+class TestWithARemoteLearner(RealRun):
+    """The components' per-Learner state on a remote Learner (#19).
+
+    `validate` allows `num_learners=1` for `target_policy`, `adv_ema` and
+    `value_norm`, but their state had only been exercised on the local Learner.
+    """
+
+    settings = ALL_BUT_DISCO103
+    overrides = {"num_learners": 1}
+
+    @property
+    def worker(self):
+        assert self.algo.learner_group._learner is None
+        return self.algo.learner_group._workers[0]
+
+    def test_the_run_trains_with_finite_losses(self):
+        metrics = self.result["learners"]["policy_0"]
+        assert np.isfinite(float(metrics["total_loss"]))
+        for key in (tp.TARGET_KL_KEY, vn.STD_KEY, pp.POLICY_PREDICTION_LOSS_KEY):
+            assert np.isfinite(float(metrics[key])), key
+
+    def test_the_extension_state_is_in_the_remote_learners_state(self):
+        state = ray.get(self.worker.get_state.remote())
+        # The target copies live in the Learner's own state, not the module's.
+        assert tp.STATE_KEY in state
+        assert "discorl_disco103" not in state
+
+    def test_its_state_round_trips_through_set_state(self):
+        state = ray.get(self.worker.get_state.remote())
+        ray.get(self.worker.set_state.remote(state))
+        after = ray.get(self.worker.get_state.remote())
+        assert set(after) == set(state)
+
+
+class TestLstmWithThePpoComponents(RealRun):
+    """A recurrent encoder with the components allowed on one (#19).
+
+    `target_policy`, `adv_ema` and `value_norm` see time-ranked batches from an
+    `lstm` encoder; `policy_prediction` and `disco103` need a stateless one and
+    `validate` refuses them.
+    """
+
+    settings = {
+        "target_policy": True,
+        "adv_ema": True,
+        "value_norm": True,
+        "target_coeff": 0.5,
+        "adv_ema_decay": 0.9,
+        "value_norm_decay": 0.9,
+    }
+    overrides = {"encoder_type": "lstm"}
+
+    @classmethod
+    def before_training(cls):
+        cls.module = cls.learner.module["policy_0"].unwrapped()
+
+    def test_it_trains_with_finite_losses(self):
+        metrics = self.result["learners"]["policy_0"]
+        assert np.isfinite(float(metrics["total_loss"]))
+        for key in (tp.TARGET_KL_KEY, vn.MEAN_KEY, vn.STD_KEY):
+            assert np.isfinite(float(metrics[key])), key
+
+    def test_the_moments_moved_once_per_iteration(self):
+        assert self.learner._adv_ema.moments["policy_0"].decay_product == pytest.approx(0.9)
+        assert float(self.module._vn_decay_product) == pytest.approx(0.9)
 
 
 class TestEveryComponentButDisco103(RealRun):
@@ -112,8 +180,14 @@ class TestEveryComponentButDisco103(RealRun):
     def test_the_connector_pieces_are_where_they_must_be(self):
         names = [type(c).__name__ for c in self.learner._learner_connector.connectors]
         gae = names.index("GeneralAdvantageEstimation")
-        # The value-norm moments move after the advantage EMA has read V(s) (components.md §3).
-        assert names[gae + 1 : gae + 3] == ["EmaAdvantages", "ValueNormMoments"]
+        # The next-step logits are one pass per update batch, after GAE (#31);
+        # the value-norm moments move after the advantage EMA has read V(s)
+        # (components.md §3).
+        assert names[gae + 1 : gae + 4] == [
+            "PolicyPredictionTargets",
+            "EmaAdvantages",
+            "ValueNormMoments",
+        ]
         assert names.count("AddNextObservationsFromEpisodesToTrainBatch") == 1
         assert names.index("AddNextObservationsFromEpisodesToTrainBatch") == (
             names.index("AddOneTsToEpisodesAndTruncate") + 1
